@@ -124,6 +124,10 @@ class ThumbnailTaskParams(BaseModel):
         default=False,
         description="Fetch all items regardless of updated_at (ignores hours_lookback)",
     )
+    dry_run: bool = Field(
+        default=True,
+        description="Test mode: only test DB connection and fetch items without generating thumbnails",
+    )
 
 
 class ThumbnailResult(BaseModel):
@@ -295,15 +299,36 @@ class ThumbnailGeneratorTask:
             if not self.settings:
                 raise RuntimeError("Call init_from_env() before running task")
 
-            self._pg_pool = await asyncpg.create_pool(
-                host=self.settings.postgres_server,
-                port=self.settings.postgres_port,
-                user=self.settings.postgres_user,
-                password=self.settings.postgres_password,
-                database=self.settings.postgres_db,
-                min_size=1,
-                max_size=5,
+            logger.info(
+                f"Creating PostgreSQL connection pool to {self.settings.postgres_server}:{self.settings.postgres_port}"
             )
+            try:
+                self._pg_pool = await asyncio.wait_for(
+                    asyncpg.create_pool(
+                        host=self.settings.postgres_server,
+                        port=self.settings.postgres_port,
+                        user=self.settings.postgres_user,
+                        password=self.settings.postgres_password,
+                        database=self.settings.postgres_db,
+                        min_size=1,
+                        max_size=5,
+                        command_timeout=60,  # 60 seconds per query
+                    ),
+                    timeout=30,  # 30 seconds to establish connection pool
+                )
+                logger.info("PostgreSQL connection pool created successfully")
+            except asyncio.TimeoutError:
+                logger.error(
+                    f"Timeout connecting to PostgreSQL at "
+                    f"{self.settings.postgres_server}:{self.settings.postgres_port}"
+                )
+                raise RuntimeError(
+                    f"Timeout connecting to PostgreSQL at "
+                    f"{self.settings.postgres_server}:{self.settings.postgres_port}"
+                )
+            except Exception as e:
+                logger.error(f"Failed to connect to PostgreSQL: {e}")
+                raise
         return self._pg_pool
 
     def _get_s3_client(self: Self) -> Any:
@@ -514,20 +539,23 @@ class ThumbnailGeneratorTask:
         """Fetch visible layers for a project in the format needed for rendering.
 
         Only includes layers where visibility is True (or not set, defaults to True).
+
+        Note: JSONB columns are cast to ::text to avoid asyncpg type introspection
+        timeouts that can occur with large JSONB columns.
         """
         rows = await conn.fetch(
             """
             SELECT
                 lp.id as layer_project_id,
                 lp.layer_id,
-                lp.properties as layer_project_properties,
+                lp.properties::text as layer_project_properties,
                 l.id,
                 l.name,
                 l.type,
                 l.feature_layer_geometry_type,
-                l.properties as layer_properties,
+                l.properties::text as layer_properties,
                 l.url,
-                l.extent,
+                l.extent::text as extent,
                 l.folder_id
             FROM customer.layer_project lp
             JOIN customer.layer l ON lp.layer_id = l.id
@@ -602,6 +630,9 @@ class ThumbnailGeneratorTask:
         Excludes:
         - Table-only layers (no geometry)
         - Street network layers (special type)
+
+        Note: JSONB columns are cast to ::text to avoid asyncpg type introspection
+        timeouts that can occur with large JSONB columns.
         """
         pool = await self._get_pg_pool()
 
@@ -615,9 +646,9 @@ class ThumbnailGeneratorTask:
                         name,
                         type,
                         feature_layer_geometry_type,
-                        properties,
+                        properties::text as properties,
                         url,
-                        extent,
+                        extent::text as extent,
                         folder_id,
                         updated_at,
                         thumbnail_url
@@ -640,9 +671,9 @@ class ThumbnailGeneratorTask:
                         name,
                         type,
                         feature_layer_geometry_type,
-                        properties,
+                        properties::text as properties,
                         url,
-                        extent,
+                        extent::text as extent,
                         folder_id,
                         updated_at,
                         thumbnail_url
@@ -665,9 +696,9 @@ class ThumbnailGeneratorTask:
                         name,
                         type,
                         feature_layer_geometry_type,
-                        properties,
+                        properties::text as properties,
                         url,
-                        extent,
+                        extent::text as extent,
                         folder_id,
                         updated_at,
                         thumbnail_url
@@ -1472,9 +1503,198 @@ class ThumbnailGeneratorTask:
                 error=str(e),
             )
 
+    async def _run_dry_run(
+        self: Self, params: ThumbnailTaskParams
+    ) -> ThumbnailTaskOutput:
+        """Run in dry-run mode: test DB connection and fetch items without generating.
+
+        This is useful for debugging connection issues in production.
+        """
+        logger.info("=== DRY RUN MODE ===")
+        logger.info(
+            "Testing connections and fetching items (no thumbnails will be generated)"
+        )
+
+        errors: list[str] = []
+
+        # Test PostgreSQL connection
+        logger.info("Testing PostgreSQL connection...")
+        try:
+            pool = await self._get_pg_pool()
+            async with pool.acquire() as conn:
+                result = await conn.fetchval("SELECT 1")
+                logger.info(
+                    f"✓ PostgreSQL connection OK (test query returned: {result})"
+                )
+
+                # Also test that customer schema exists
+                schema_exists = await conn.fetchval(
+                    "SELECT EXISTS(SELECT 1 FROM information_schema.schemata WHERE schema_name = 'customer')"
+                )
+                if schema_exists:
+                    logger.info("✓ customer schema exists")
+                else:
+                    logger.warning("✗ customer schema does not exist!")
+                    errors.append("customer schema does not exist")
+        except Exception as e:
+            logger.error(f"✗ PostgreSQL connection FAILED: {e}")
+            errors.append(f"PostgreSQL connection failed: {e}")
+            return ThumbnailTaskOutput(
+                total_processed=0,
+                projects_processed=0,
+                layers_processed=0,
+                feature_layers_processed=0,
+                raster_layers_processed=0,
+                table_layers_processed=0,
+                success_count=0,
+                error_count=1,
+                errors=errors,
+            )
+
+        # Determine since filter
+        since: datetime | None = None
+        if not params.fetch_all and not params.project_ids and not params.layer_ids:
+            since = datetime.now(timezone.utc) - timedelta(hours=params.hours_lookback)
+            logger.info(f"Looking for items updated since: {since.isoformat()}")
+        elif params.fetch_all:
+            logger.info("Fetching ALL items (fetch_all=True)")
+
+        projects_found = 0
+        layers_found = 0
+        table_layers_found = 0
+        projects_needing_regen = 0
+        layers_needing_regen = 0
+        table_layers_needing_regen = 0
+
+        # Fetch projects
+        if params.include_projects:
+            logger.info("Fetching projects...")
+            try:
+                projects = await self._fetch_projects_to_update(
+                    params.batch_size,
+                    project_ids=params.project_ids or None,
+                    use_bounds=params.use_bounds,
+                    since=since,
+                )
+                projects_found = len(projects)
+                for p in projects:
+                    if p.needs_regeneration():
+                        projects_needing_regen += 1
+                logger.info(
+                    f"✓ Found {projects_found} projects "
+                    f"({projects_needing_regen} need regeneration)"
+                )
+                # Show sample
+                for p in projects[:3]:
+                    needs_regen = p.needs_regeneration()
+                    logger.info(
+                        f"  - {p.id} (updated: {p.updated_at}, needs_regen: {needs_regen})"
+                    )
+                if len(projects) > 3:
+                    logger.info(f"  ... and {len(projects) - 3} more")
+            except Exception as e:
+                logger.error(f"✗ Failed to fetch projects: {e}")
+                errors.append(f"projects fetch: {e}")
+
+        # Fetch feature/raster layers
+        if params.include_layers:
+            logger.info("Fetching feature/raster layers...")
+            try:
+                layers = await self._fetch_layers_to_update(
+                    params.batch_size,
+                    layer_ids=params.layer_ids or None,
+                    use_bounds=params.use_bounds,
+                    since=since,
+                )
+                layers_found = len(layers)
+                for layer in layers:
+                    if layer.needs_regeneration():
+                        layers_needing_regen += 1
+                logger.info(
+                    f"✓ Found {layers_found} feature/raster layers "
+                    f"({layers_needing_regen} need regeneration)"
+                )
+                for layer in layers[:3]:
+                    needs_regen = layer.needs_regeneration()
+                    logger.info(
+                        f"  - {layer.id} [{layer.layer_type}] "
+                        f"(updated: {layer.updated_at}, needs_regen: {needs_regen})"
+                    )
+                if len(layers) > 3:
+                    logger.info(f"  ... and {len(layers) - 3} more")
+            except Exception as e:
+                logger.error(f"✗ Failed to fetch layers: {e}")
+                errors.append(f"layers fetch: {e}")
+
+        # Fetch table layers
+        if params.include_table_layers:
+            logger.info("Fetching table layers...")
+            try:
+                tables = await self._fetch_table_layers_to_update(
+                    params.batch_size,
+                    layer_ids=params.layer_ids or None,
+                    since=since,
+                )
+                table_layers_found = len(tables)
+                for t in tables:
+                    if t.needs_regeneration():
+                        table_layers_needing_regen += 1
+                logger.info(
+                    f"✓ Found {table_layers_found} table layers "
+                    f"({table_layers_needing_regen} need regeneration)"
+                )
+                for t in tables[:3]:
+                    needs_regen = t.needs_regeneration()
+                    logger.info(
+                        f"  - {t.id} (updated: {t.updated_at}, needs_regen: {needs_regen})"
+                    )
+                if len(tables) > 3:
+                    logger.info(f"  ... and {len(tables) - 3} more")
+            except Exception as e:
+                logger.error(f"✗ Failed to fetch table layers: {e}")
+                errors.append(f"table layers fetch: {e}")
+
+        total_found = projects_found + layers_found + table_layers_found
+        total_needing_regen = (
+            projects_needing_regen + layers_needing_regen + table_layers_needing_regen
+        )
+
+        logger.info("=== DRY RUN SUMMARY ===")
+        logger.info(f"Total items found: {total_found}")
+        logger.info(f"Items needing regeneration: {total_needing_regen}")
+        logger.info(
+            f"  - Projects: {projects_found} ({projects_needing_regen} need regen)"
+        )
+        logger.info(
+            f"  - Feature/Raster layers: {layers_found} ({layers_needing_regen} need regen)"
+        )
+        logger.info(
+            f"  - Table layers: {table_layers_found} ({table_layers_needing_regen} need regen)"
+        )
+        if errors:
+            logger.info(f"Errors: {len(errors)}")
+            for err in errors:
+                logger.info(f"  - {err}")
+
+        return ThumbnailTaskOutput(
+            total_processed=total_found,
+            projects_processed=projects_found,
+            layers_processed=layers_found + table_layers_found,
+            feature_layers_processed=layers_found,
+            raster_layers_processed=0,  # Not tracked separately in dry run
+            table_layers_processed=table_layers_found,
+            success_count=total_found,
+            error_count=len(errors),
+            errors=errors,
+        )
+
     async def run_async(self: Self, params: ThumbnailTaskParams) -> ThumbnailTaskOutput:
         """Execute the thumbnail generation task."""
         try:
+            # Handle dry_run mode - test connections and fetch items only
+            if params.dry_run:
+                return await self._run_dry_run(params)
+
             # Check if specific IDs are provided
             has_specific_ids = bool(params.project_ids or params.layer_ids)
 
@@ -1506,6 +1726,7 @@ class ThumbnailGeneratorTask:
 
             if params.include_projects and (params.project_ids or not has_specific_ids):
                 try:
+                    logger.info("Fetching projects from database...")
                     projects = await self._fetch_projects_to_update(
                         params.batch_size,
                         project_ids=params.project_ids if params.project_ids else None,
@@ -1522,6 +1743,7 @@ class ThumbnailGeneratorTask:
                 remaining = params.batch_size - len(items)
                 if remaining > 0:
                     try:
+                        logger.info("Fetching feature/raster layers from database...")
                         layers = await self._fetch_layers_to_update(
                             remaining,
                             layer_ids=params.layer_ids if params.layer_ids else None,
@@ -1543,6 +1765,7 @@ class ThumbnailGeneratorTask:
                 remaining = params.batch_size - len(items)
                 if remaining > 0:
                     try:
+                        logger.info("Fetching table layers from database...")
                         tables = await self._fetch_table_layers_to_update(
                             remaining,
                             layer_ids=params.layer_ids if params.layer_ids else None,
