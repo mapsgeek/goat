@@ -321,6 +321,26 @@ class ProjectPublicProjectConfig(BaseModel):
     folder_id: UUID = Field(..., description="Folder ID")
     builder_config: dict[str, Any] | None = Field(None, description="Builder config")
 
+    @field_validator("thumbnail_url", mode="before")
+    @classmethod
+    def convert_thumbnail_to_presigned_url(
+        cls: type["ProjectPublicProjectConfig"], value: str | None
+    ) -> str | None:
+        """Convert S3 key to presigned URL if needed."""
+        if not value:
+            return settings.DEFAULT_PROJECT_THUMBNAIL
+
+        # If already a full URL, return as-is
+        if value.startswith(("http://", "https://")):
+            return value
+
+        # It's an S3 key, generate presigned URL
+        from core.services.s3 import s3_service
+
+        return s3_service.get_thumbnail_url(
+            value, default_url=settings.DEFAULT_PROJECT_THUMBNAIL
+        )
+
 
 class ProjectPublicConfig(BaseModel):
     layers: list[
