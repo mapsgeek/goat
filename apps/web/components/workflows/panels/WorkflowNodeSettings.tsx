@@ -12,11 +12,12 @@ import { useEdges } from "@xyflow/react";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
-import type { AppDispatch } from "@/lib/store";
+import type { AppDispatch, RootState } from "@/lib/store";
+import { selectNodes } from "@/lib/store/workflow/selectors";
 import { updateNode } from "@/lib/store/workflow/slice";
 import {
   getDefaultValues,
@@ -86,6 +87,9 @@ export default function WorkflowNodeSettings({
 
   // Get edges to detect connected inputs
   const edges = useEdges();
+
+  // Get all nodes from redux store for tracing connections
+  const nodes = useSelector((state: RootState) => selectNodes(state));
 
   // For tool nodes, fetch process description
   const processId = node.type === "tool" && node.data.type === "tool" ? node.data.processId : undefined;
@@ -183,6 +187,35 @@ export default function WorkflowNodeSettings({
     return sections.flatMap((section) => section.inputs);
   }, [sections]);
 
+  // Helper to get layer ID from a connected source node
+  const getLayerIdFromSourceNode = useCallback(
+    (inputName: string): string | undefined => {
+      // Find the edge that connects to this input
+      const edge = edges.find(
+        (e) => e.target === node.id && (e.targetHandle === inputName || (!e.targetHandle && allInputs.length === 1))
+      );
+      if (!edge) return undefined;
+
+      // Find the source node
+      const sourceNode = nodes.find((n) => n.id === edge.source);
+      if (!sourceNode) return undefined;
+
+      // If source is a dataset node, get its configured layerId
+      if (sourceNode.data?.type === "dataset" && sourceNode.data?.layerId) {
+        return sourceNode.data.layerId as string;
+      }
+
+      // If source is a tool node with temp result, assume it has geometry
+      // (tool outputs generally preserve geometry type)
+      if (sourceNode.data?.type === "tool") {
+        return "__tool_output__"; // Special marker to indicate tool output (has geometry)
+      }
+
+      return undefined;
+    },
+    [edges, node.id, nodes, allInputs.length]
+  );
+
   // Compute layer geometry types for visibility conditions
   const layerGeometryValues = useMemo(() => {
     if (!layers) return {};
@@ -193,7 +226,26 @@ export default function WorkflowNodeSettings({
     for (const input of allInputs) {
       if (input.inputType === "layer") {
         const projectLayerId = effectiveValues[input.name] as string | undefined;
-        if (projectLayerId) {
+
+        // Check if this is a connected input
+        if (projectLayerId === "__connected__") {
+          // Trace to source node to get actual layer ID
+          const sourceLayerId = getLayerIdFromSourceNode(input.name);
+
+          if (sourceLayerId === "__tool_output__") {
+            // Tool outputs generally have geometry
+            computed[`_${input.name}_has_geometry`] = true;
+          } else if (sourceLayerId) {
+            // Find layer by numeric ID
+            const numericId = parseInt(sourceLayerId, 10);
+            const layer = layers.find((l) => l.id === numericId);
+            computed[`_${input.name}_has_geometry`] = !!layer?.feature_layer_geometry_type;
+          } else {
+            // Connected but can't determine - assume has geometry for better UX
+            computed[`_${input.name}_has_geometry`] = true;
+          }
+        } else if (projectLayerId) {
+          // Direct layer selection
           const numericId = parseInt(projectLayerId, 10);
           const layer = layers.find((l) => l.id === numericId);
           computed[`_${input.name}_has_geometry`] = !!layer?.feature_layer_geometry_type;
@@ -209,7 +261,7 @@ export default function WorkflowNodeSettings({
       geometryFlags.length > 0 && geometryFlags.every((v) => v === true);
 
     return computed;
-  }, [layers, allInputs, values, defaultValues, connectedLayerValues]);
+  }, [layers, allInputs, values, defaultValues, connectedLayerValues, getLayerIdFromSourceNode]);
 
   // Update a single input value
   const handleInputChange = useCallback(

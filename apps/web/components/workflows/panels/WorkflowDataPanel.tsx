@@ -274,11 +274,6 @@ const WorkflowDataPanel: React.FC<WorkflowDataPanelProps> = ({
     [selectedNode, tempLayerIds]
   );
 
-  // Debug logging
-  console.log("[WorkflowDataPanel] selectedNode:", selectedNode?.id, selectedNode?.type);
-  console.log("[WorkflowDataPanel] tempLayerIds:", tempLayerIds);
-  console.log("[WorkflowDataPanel] hasData:", hasData, "layerId:", layerId, "tempLayerId:", tempLayerId);
-
   // Check if we're viewing a temp layer
   const isTempLayer = !!tempLayerId;
 
