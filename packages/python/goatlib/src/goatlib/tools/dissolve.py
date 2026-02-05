@@ -128,6 +128,51 @@ class DissolveToolRunner(BaseToolRunner[DissolveToolParams]):
     output_geometry_type = None  # Dynamic based on input geometry
     default_output_name = get_default_layer_name("dissolve", "en")
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Predict dissolve output schema.
+
+        Dissolve outputs:
+        - dissolve_fields (group by columns)
+        - Statistics columns (operation_field for each statistic)
+        - count column (always added)
+        - geometry column (merged polygons)
+        """
+        input_layer = input_schemas.get("input_layer_id", {})
+        columns = {}
+
+        # Add dissolve_fields (group by columns)
+        dissolve_fields = params.get("dissolve_fields") or []
+        for field in dissolve_fields:
+            if field in input_layer:
+                columns[field] = input_layer[field]
+
+        # Add count column (always present)
+        columns["count"] = "BIGINT"
+
+        # Add statistics columns
+        field_statistics = params.get("field_statistics") or []
+        for stat in field_statistics:
+            operation = stat.get("operation", "count")
+            field = stat.get("field")
+            result_name = stat.get("result_name")
+            if operation == "count":
+                # count is already added above
+                continue
+            elif field:
+                # Use custom result_name if provided, otherwise generate default
+                col_name = result_name if result_name else f"{field}_{operation}"
+                columns[col_name] = "DOUBLE"
+
+        # Add geometry
+        columns["geometry"] = "GEOMETRY"
+
+        return columns
+
     def get_layer_properties(
         self: Self,
         params: DissolveToolParams,

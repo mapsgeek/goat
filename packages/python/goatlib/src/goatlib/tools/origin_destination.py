@@ -220,6 +220,27 @@ class OriginDestinationToolRunner(BaseToolRunner[OriginDestinationToolParams]):
     # Keep for backward compatibility
     default_output_name = get_default_layer_name("origin_destination_lines", "en")
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Predict origin-destination output schema (lines layer).
+
+        OD Lines output:
+        - origin: origin ID
+        - destination: destination ID
+        - weight: aggregated weight value
+        - geometry: LineString connecting origin to destination
+        """
+        return {
+            "origin": "VARCHAR",
+            "destination": "VARCHAR",
+            "weight": "DOUBLE",
+            "geometry": "GEOMETRY",
+        }
+
     def process(
         self: Self, params: OriginDestinationToolParams, temp_dir: Path
     ) -> tuple[Path, DatasetMetadata]:

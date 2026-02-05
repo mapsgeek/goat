@@ -622,6 +622,38 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
     default_output_name: str = "Tool Output"
     tool_type: str | None = None  # e.g., "catchment_area", "buffer", "join"
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Predict output columns based on input schemas and parameters.
+
+        This method enables field selectors in workflow UIs to show available
+        fields from upstream tool nodes BEFORE execution.
+
+        Default behavior: pass through all input columns unchanged.
+        Subclasses should override to define tool-specific output columns.
+
+        Args:
+            input_schemas: Dict mapping input name -> column schema
+                e.g., {"input_layer_id": {"id": "INTEGER", "name": "VARCHAR", "geometry": "GEOMETRY"}}
+            params: Tool configuration parameters
+
+        Returns:
+            Dict mapping output column name -> DuckDB type string
+        """
+        # Default: pass through all columns from first/primary input
+        primary_input = (
+            input_schemas.get("input_layer_id")
+            or input_schemas.get("layer_id")
+            or input_schemas.get("source_layer_id")
+            or input_schemas.get("target_layer_id")
+            or next(iter(input_schemas.values()), {})
+        )
+        return dict(primary_input)
+
     def get_tool_type(self: Self) -> str | None:
         """Return the tool type for this runner.
 

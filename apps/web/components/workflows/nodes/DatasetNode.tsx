@@ -262,7 +262,7 @@ const DatasetNode: React.FC<DatasetNodeProps> = ({ id, data, selected }) => {
               </IconStatusBadge>
             )}
           </NodeIconWrapper>
-          <Typography variant="body2" fontWeight="bold" sx={{ wordBreak: "break-word" }}>
+          <Typography variant="caption" fontWeight={700} sx={{ wordBreak: "break-word" }}>
             {data.layerId ? data.label : t("no_dataset")}
           </Typography>
         </NodeHeader>

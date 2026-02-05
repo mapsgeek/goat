@@ -120,6 +120,27 @@ class ZonesClusteringToolRunner(BaseToolRunner[ClusteringZonesToolParams]):
     output_geometry_type = "point"  # Original points with cluster_id attribute
     default_output_name = get_default_layer_name("clustered_zones", "en")
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Predict clustering zones output schema.
+
+        Clustering outputs:
+        - All input columns (preserves original points)
+        - cluster_id: assigned cluster identifier
+        - geometry: Point geometry (unchanged from input)
+        """
+        input_layer = input_schemas.get("input_layer_id", {})
+        columns = dict(input_layer)
+
+        # Add cluster_id column
+        columns["cluster_id"] = "INTEGER"
+
+        return columns
+
     def process(
         self: Self,
         params: ClusteringZonesToolParams,

@@ -14,8 +14,6 @@ import {
   Divider,
   Grid,
   IconButton,
-  MenuItem,
-  Select,
   Stack,
   Tooltip,
   Typography,
@@ -34,6 +32,7 @@ import { selectNode } from "@/lib/store/workflow/slice";
 import type { ProjectLayer } from "@/lib/validations/project";
 import type { WorkflowConfig } from "@/lib/validations/workflow";
 
+import type { SelectorItem } from "@/types/map/common";
 import type { ToolCategory } from "@/types/map/ogc-processes";
 
 import { useCategorizedProcesses } from "@/hooks/map/useOgcProcesses";
@@ -46,6 +45,7 @@ import {
   SidePanelTabs,
 } from "@/components/common/SidePanel";
 import JobProgressItem from "@/components/jobs/JobProgressItem";
+import Selector from "@/components/map/panels/common/Selector";
 import WorkflowNodeSettings from "@/components/workflows/panels/WorkflowNodeSettings";
 
 const RightPanelContainer = styled(SidePanelContainer)(({ theme }) => ({
@@ -370,23 +370,24 @@ const HistoryTabContent: React.FC<HistoryTabContentProps> = ({ workflowId }) => 
     );
   }
 
+  const statusFilterItems: SelectorItem[] = [
+    { value: "all", label: t("all_states") },
+    { value: "successful", label: t("successful") },
+    { value: "failed", label: t("failed") },
+    { value: "running", label: t("running") },
+    { value: "accepted", label: t("pending") },
+    { value: "dismissed", label: t("cancelled") },
+  ];
+
   return (
     <Box>
       {/* Status filter dropdown */}
       <Box sx={{ px: 2, pt: 2, pb: 1 }}>
-        <Select
-          size="small"
-          fullWidth
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          sx={{ bgcolor: theme.palette.background.paper }}>
-          <MenuItem value="all">{t("all_states")}</MenuItem>
-          <MenuItem value="successful">{t("successful")}</MenuItem>
-          <MenuItem value="failed">{t("failed")}</MenuItem>
-          <MenuItem value="running">{t("running")}</MenuItem>
-          <MenuItem value="accepted">{t("pending")}</MenuItem>
-          <MenuItem value="dismissed">{t("cancelled")}</MenuItem>
-        </Select>
+        <Selector
+          selectedItems={statusFilterItems.find((item) => item.value === statusFilter)}
+          setSelectedItems={(item) => setStatusFilter((item as SelectorItem)?.value as StatusFilter)}
+          items={statusFilterItems}
+        />
       </Box>
 
       {workflowJobs.length === 0 ? (

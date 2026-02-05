@@ -202,6 +202,25 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
     # Store stations output path for secondary layer creation
     _stations_parquet: Path | None = None
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Predict ÖV-Güteklassen output schema.
+
+        ÖV-Güteklassen outputs:
+        - gueteklasse: quality class (A-F or None)
+        - station_group_id: unique identifier for station catchment group
+        - geometry: Polygon representing the catchment area
+        """
+        return {
+            "gueteklasse": "VARCHAR",
+            "station_group_id": "INTEGER",
+            "geometry": "GEOMETRY",
+        }
+
     def get_layer_properties(
         self: Self,
         params: OevGueteklassenToolParams,

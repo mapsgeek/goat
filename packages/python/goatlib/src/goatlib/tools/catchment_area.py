@@ -424,6 +424,25 @@ class CatchmentAreaToolRunner(BaseToolRunner[CatchmentAreaWindmillParams]):
     # Track if starting points came from an existing layer (skip creating duplicate)
     _starting_points_from_layer: bool = False
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Predict catchment area output schema.
+
+        Catchment area outputs:
+        - id: unique identifier for each isochrone
+        - minute: travel time in minutes for this isochrone step
+        - geometry: Polygon/MultiPolygon representing the catchment area
+        """
+        return {
+            "id": "INTEGER",
+            "minute": "INTEGER",
+            "geometry": "GEOMETRY",
+        }
+
     def get_layer_properties(
         self: Self,
         params: CatchmentAreaWindmillParams,

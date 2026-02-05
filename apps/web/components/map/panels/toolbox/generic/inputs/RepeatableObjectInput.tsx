@@ -5,7 +5,7 @@
  * Used for array fields with complex object items (e.g., opportunities in heatmap tools).
  */
 import { Box, Button, Divider, IconButton, Stack, Typography, useTheme } from "@mui/material";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { v4 as uuidv4 } from "uuid";
 
@@ -28,6 +28,10 @@ interface RepeatableObjectInputProps {
   schemaDefs?: Record<string, OGCInputSchema>;
   /** All form values for conditional visibility */
   formValues?: Record<string, unknown>;
+  /** Map of layer input names to their dataset IDs (for connected layers in workflows) */
+  layerDatasetIds?: Record<string, string>;
+  /** Map of layer input names to their predicted columns (for connected tool outputs) */
+  predictedColumns?: Record<string, Record<string, string>>;
 }
 
 /**
@@ -156,7 +160,9 @@ export default function RepeatableObjectInput({
   onNestedFiltersChange,
   disabled,
   schemaDefs,
-  formValues: _formValues,
+  formValues: _formValues = {},
+  layerDatasetIds,
+  predictedColumns,
 }: RepeatableObjectInputProps) {
   const { t } = useTranslation("common");
   const theme = useTheme();
@@ -204,33 +210,31 @@ export default function RepeatableObjectInput({
   // Current items (ensure at least minItems)
   const items = useMemo(() => {
     const currentItems = value || [];
-    if (currentItems.length < minItems && itemSchema) {
-      const defaults = getObjectDefaults(itemSchema, schemaDefs);
-      const newItems = [...currentItems];
-      while (newItems.length < minItems) {
-        newItems.push({ ...defaults, _id: uuidv4() });
-      }
-      return newItems;
-    }
     // Ensure all items have _id for stable keys
     return currentItems.map((item) => ({
       ...item,
       _id: (item as Record<string, unknown>)._id || uuidv4(),
     }));
-  }, [value, minItems, itemSchema, schemaDefs]);
+  }, [value]);
 
-  // Initialize if empty
-  useMemo(() => {
+  // Track if we've initialized to prevent infinite loops
+  const hasInitialized = useRef(false);
+
+  // Initialize if empty - use useEffect, not useMemo
+  useEffect(() => {
+    // Only initialize once when component mounts with empty value
+    if (hasInitialized.current) return;
     if ((!value || value.length === 0) && minItems > 0 && itemSchema) {
+      hasInitialized.current = true;
       const defaults = getObjectDefaults(itemSchema, schemaDefs);
       const initialItems: Record<string, unknown>[] = [];
       for (let i = 0; i < minItems; i++) {
         initialItems.push({ ...defaults, _id: uuidv4() });
       }
-      // Defer onChange to avoid render cycle
-      setTimeout(() => onChange(initialItems), 0);
+      onChange(initialItems);
     }
-  }, [value, minItems, itemSchema, schemaDefs, onChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount
 
   // Add new item
   const handleAdd = useCallback(() => {
@@ -380,6 +384,8 @@ export default function RepeatableObjectInput({
                   formValues={{ ..._formValues, ...itemValues }}
                   schemaDefs={schemaDefs}
                   excludedLayerIds={getExcludedLayerIds(inputDef.name)}
+                  layerDatasetIds={layerDatasetIds}
+                  predictedColumns={predictedColumns}
                 />
               ))}
             </Stack>

@@ -33,6 +33,7 @@ import type { WorkflowNode } from "@/lib/validations/workflow";
 import { useWorkflowExecution } from "@/hooks/workflows/useWorkflowExecution";
 
 import WorkflowCanvas from "@/components/workflows/canvas/WorkflowCanvas";
+import { WorkflowExecutionProvider } from "@/components/workflows/context/WorkflowExecutionContext";
 import WorkflowDataPanel from "@/components/workflows/panels/WorkflowDataPanel";
 import WorkflowsConfigPanel from "@/components/workflows/panels/WorkflowsConfigPanel";
 import WorkflowsNodesPanel from "@/components/workflows/panels/WorkflowsNodesPanel";
@@ -85,12 +86,20 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
   const { workflows, mutate: mutateWorkflows } = useWorkflows(project?.id);
 
   // Workflow execution hook
-  const { isExecuting, canExecute, nodeStatuses, nodeExecutionInfo, tempLayerIds, execute, finalizeNode } =
-    useWorkflowExecution({
-      workflow: selectedWorkflow ?? undefined,
-      projectId: project?.id,
-      folderId: project?.folder_id,
-    });
+  const {
+    isExecuting,
+    canExecute,
+    nodeStatuses,
+    nodeExecutionInfo,
+    tempLayerIds,
+    execute,
+    cancel,
+    finalizeNode,
+  } = useWorkflowExecution({
+    workflow: selectedWorkflow ?? undefined,
+    projectId: project?.id,
+    folderId: project?.folder_id,
+  });
 
   // Sync workflows from API to Redux
   useEffect(() => {
@@ -313,66 +322,70 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
 
   return (
     <MapProvider>
-      <Box
-        sx={{
-          display: "flex",
-          width: "100%",
-          height: "100%",
-          overflow: "hidden",
-          backgroundColor: theme.palette.background.default,
-        }}>
-        {/* Left Panel - Workflow list and Layers */}
-        <WorkflowsConfigPanel
-          project={project}
-          projectLayers={projectLayers}
-          projectLayerGroups={projectLayerGroups}
-          selectedWorkflow={selectedWorkflow ?? null}
-          onSelectWorkflow={handleSelectWorkflow}
-          onLayerDragStart={handleLayerDragStart}
-        />
-
-        {/* Center - Canvas and Data Panel */}
+      <WorkflowExecutionProvider
+        isExecuting={isExecuting}
+        nodeStatuses={nodeStatuses}
+        nodeExecutionInfo={nodeExecutionInfo}
+        tempLayerIds={tempLayerIds}
+        onSaveNode={finalizeNode}>
         <Box
           sx={{
-            flex: 1,
             display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
+            width: "100%",
             height: "100%",
             overflow: "hidden",
+            backgroundColor: theme.palette.background.default,
           }}>
-          {/* Canvas area */}
-          <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-            <WorkflowCanvas
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              isExecuting={isExecuting}
-              canExecute={canExecute}
-              nodeStatuses={nodeStatuses}
-              nodeExecutionInfo={nodeExecutionInfo}
+          {/* Left Panel - Workflow list and Layers */}
+          <WorkflowsConfigPanel
+            project={project}
+            projectLayers={projectLayers}
+            projectLayerGroups={projectLayerGroups}
+            selectedWorkflow={selectedWorkflow ?? null}
+            onSelectWorkflow={handleSelectWorkflow}
+            onLayerDragStart={handleLayerDragStart}
+          />
+
+          {/* Center - Canvas and Data Panel */}
+          <Box
+            sx={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              minWidth: 0,
+              height: "100%",
+              overflow: "hidden",
+            }}>
+            {/* Canvas area */}
+            <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+              <WorkflowCanvas
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                isExecuting={isExecuting}
+                canExecute={canExecute}
+                onRun={execute}
+                onStop={cancel}
+              />
+            </Box>
+
+            {/* Bottom Data Panel - Table/Map view */}
+            <WorkflowDataPanel
+              selectedNode={selectedNode}
               tempLayerIds={tempLayerIds}
-              onRun={execute}
-              onSaveNode={finalizeNode}
+              workflowId={selectedWorkflow?.id}
             />
           </Box>
 
-          {/* Bottom Data Panel - Table/Map view */}
-          <WorkflowDataPanel
-            selectedNode={selectedNode}
-            tempLayerIds={tempLayerIds}
+          {/* Right Panel - Tools palette & Node Settings */}
+          <WorkflowsNodesPanel
+            config={selectedWorkflow?.config || null}
+            selectedNodeId={selectedNodeId}
+            projectLayers={projectLayers}
             workflowId={selectedWorkflow?.id}
+            onDragStart={handleDragStart}
           />
         </Box>
-
-        {/* Right Panel - Tools palette & Node Settings */}
-        <WorkflowsNodesPanel
-          config={selectedWorkflow?.config || null}
-          selectedNodeId={selectedNodeId}
-          projectLayers={projectLayers}
-          workflowId={selectedWorkflow?.id}
-          onDragStart={handleDragStart}
-        />
-      </Box>
+      </WorkflowExecutionProvider>
     </MapProvider>
   );
 };

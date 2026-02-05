@@ -226,6 +226,93 @@ export const cleanupWorkflowTemp = async (
 };
 
 // ============================================================================
+// Schema Prediction for Workflow Nodes
+// ============================================================================
+
+export interface NodeMetadata {
+  node_type: string;
+  executed: boolean;
+  layer_id: string | null;
+  columns: Record<string, string> | null;
+  geometry_type: string | null;
+  process_id: string | null;
+}
+
+export interface WorkflowMetadataResponse {
+  workflow_id: string;
+  nodes: Record<string, NodeMetadata>;
+}
+
+export interface InputSchemaInfo {
+  layer_id?: string | null;
+  source_node_id?: string | null;
+  columns?: Record<string, string> | null;
+}
+
+export interface PredictSchemaRequest {
+  process_id: string;
+  input_schemas: Record<string, InputSchemaInfo>;
+  params: Record<string, unknown>;
+}
+
+export interface PredictedSchemaResponse {
+  columns: Record<string, string>;
+  geometry_type: string | null;
+  geometry_column: string;
+}
+
+/**
+ * Fetch metadata for all executed nodes in a workflow
+ */
+export const getWorkflowMetadata = async (workflowId: string): Promise<WorkflowMetadataResponse> => {
+  const response = await apiRequestAuth(`${WORKFLOWS_API_BASE_URL}/${workflowId}/metadata`);
+  if (!response.ok) {
+    if (response.status === 404) {
+      return { workflow_id: workflowId, nodes: {} };
+    }
+    throw new Error("Failed to fetch workflow metadata");
+  }
+  return await response.json();
+};
+
+/**
+ * Hook to fetch workflow metadata with SWR
+ */
+export const useWorkflowMetadata = (workflowId?: string) => {
+  const { data, isLoading, error, mutate } = useSWR<WorkflowMetadataResponse>(
+    workflowId ? [`${WORKFLOWS_API_BASE_URL}/${workflowId}/metadata`] : null,
+    fetcher
+  );
+
+  return {
+    metadata: data,
+    isLoading,
+    isError: error,
+    mutate,
+  };
+};
+
+/**
+ * Predict output schema for a tool node before execution
+ */
+export const predictNodeSchema = async (
+  workflowId: string,
+  request: PredictSchemaRequest
+): Promise<PredictedSchemaResponse> => {
+  const response = await apiRequestAuth(`${WORKFLOWS_API_BASE_URL}/${workflowId}/predict-schema`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(request),
+  });
+  if (!response.ok) {
+    throw new Error("Failed to predict schema");
+  }
+  return await response.json();
+};
+
+// ============================================================================
 
 // ============================================================================
 

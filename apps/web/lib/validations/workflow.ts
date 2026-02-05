@@ -258,7 +258,7 @@ export const createTextAnnotationNode = (
   id,
   type: "textAnnotation",
   position,
-  zIndex: 0, // Text annotations appear below other nodes (default is 0, others get higher when selected)
+  zIndex: -1000, // Text annotations always appear below other nodes, even when selected
   data: {
     type: "textAnnotation",
     text,

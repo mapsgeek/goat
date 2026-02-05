@@ -7,18 +7,28 @@
  * For tool nodes, displays the same inputs as GenericTool.
  * For dataset nodes, delegates to DatasetNodeSettings.
  */
-import { Box, CircularProgress, Stack, Typography, useTheme } from "@mui/material";
+import { Box, Button, Chip, CircularProgress, Divider, Stack, Typography, useTheme } from "@mui/material";
 import { useEdges } from "@xyflow/react";
+import { formatDistance } from "date-fns";
 import { useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDispatch, useSelector } from "react-redux";
+import { toast } from "react-toastify";
 
-import { ICON_NAME } from "@p4b/ui/components/Icon";
+import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
+import { useDateFnsLocale } from "@/i18n/utils";
+
+import { predictNodeSchema, useTempLayerFeatures, useWorkflowMetadata } from "@/lib/api/workflows";
+import type { InputSchemaInfo } from "@/lib/api/workflows";
 import type { AppDispatch, RootState } from "@/lib/store";
-import { selectNodes } from "@/lib/store/workflow/selectors";
-import { updateNode } from "@/lib/store/workflow/slice";
+import {
+  selectActiveDataPanelView,
+  selectNodes,
+  selectSelectedWorkflowId,
+} from "@/lib/store/workflow/selectors";
+import { requestMapView, requestTableView, updateNode } from "@/lib/store/workflow/slice";
 import {
   getDefaultValues,
   getVisibleInputs,
@@ -38,6 +48,8 @@ import SectionHeader from "@/components/map/panels/common/SectionHeader";
 import SectionOptions from "@/components/map/panels/common/SectionOptions";
 import ToolsHeader from "@/components/map/panels/common/ToolsHeader";
 import { GenericInput } from "@/components/map/panels/toolbox/generic/inputs";
+import { useWorkflowExecutionContext } from "@/components/workflows/context/WorkflowExecutionContext";
+import SaveDatasetDialog from "@/components/workflows/dialogs/SaveDatasetDialog";
 import DatasetNodeSettings from "@/components/workflows/panels/DatasetNodeSettings";
 
 // Map section icons from backend to ICON_NAME
@@ -84,12 +96,90 @@ export default function WorkflowNodeSettings({
   const theme = useTheme();
   const dispatch = useDispatch<AppDispatch>();
   const { projectId } = useParams();
+  const dateLocale = useDateFnsLocale();
 
   // Get edges to detect connected inputs
   const edges = useEdges();
 
   // Get all nodes from redux store for tracing connections
   const nodes = useSelector((state: RootState) => selectNodes(state));
+
+  // Get current workflow ID for metadata API
+  const workflowId = useSelector(selectSelectedWorkflowId);
+
+  // Fetch workflow metadata (columns from executed nodes)
+  const { metadata: workflowMetadata } = useWorkflowMetadata(workflowId ?? undefined);
+
+  // Get execution context for status and temp layer info
+  const { nodeStatuses, nodeExecutionInfo, tempLayerIds, onSaveNode } = useWorkflowExecutionContext();
+
+  // Track active data panel view for button selected state
+  const activeDataPanelView = useSelector(selectActiveDataPanelView);
+
+  // Get execution status for this node
+  const nodeStatus = nodeStatuses[node.id];
+  const executionInfo = nodeExecutionInfo[node.id];
+  const tempLayerId = tempLayerIds[node.id];
+  const hasTempResult = !!tempLayerId;
+
+  // Parse temp layer ID to extract layer UUID
+  const tempLayerUuid = useMemo(() => {
+    if (!tempLayerId) return undefined;
+    const parts = tempLayerId.split(":");
+    return parts.length === 3 ? parts[2] : undefined;
+  }, [tempLayerId]);
+
+  // Fetch temp layer data for metadata (features count, geometry types)
+  const { data: tempLayerData } = useTempLayerFeatures(hasTempResult ? tempLayerUuid : undefined, {
+    limit: 1, // Just need metadata, not all features
+  });
+
+  // Derive metadata from temp layer response
+  const tempLayerMetadata = useMemo(() => {
+    if (!tempLayerData) return null;
+
+    const featureCount = tempLayerData.numberMatched ?? tempLayerData.features?.length ?? 0;
+
+    // Derive geometry types from first feature
+    const geometryTypes = new Set<string>();
+    if (tempLayerData.features?.length) {
+      const feature = tempLayerData.features[0] as { geometry?: { type?: string } };
+      if (feature?.geometry?.type) {
+        geometryTypes.add(feature.geometry.type);
+      }
+    }
+
+    return {
+      featureCount,
+      geometryTypes: Array.from(geometryTypes),
+    };
+  }, [tempLayerData]);
+
+  // Save dataset dialog state
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Handle save dataset
+  const handleSaveDataset = useCallback(
+    async (name: string) => {
+      if (!onSaveNode) {
+        toast.error(t("save_failed"));
+        return;
+      }
+      setIsSaving(true);
+      try {
+        await onSaveNode(node.id, name);
+        // Note: success toast is shown when the finalize job completes (handled by useJobStatus)
+      } catch (error) {
+        console.error("Failed to save layer:", error);
+        toast.error(t("layer_save_failed"));
+        throw error;
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [onSaveNode, node.id, t]
+  );
 
   // For tool nodes, fetch process description
   const processId = node.type === "tool" && node.data.type === "tool" ? node.data.processId : undefined;
@@ -134,6 +224,7 @@ export default function WorkflowNodeSettings({
   }, [process, edges, node.id]);
 
   // Form state - initialize with node's saved config or defaults
+  // Use node.id as key to ensure state resets when switching nodes
   const [values, setValues] = useState<Record<string, unknown>>(() => {
     if (node.type === "tool" && node.data.type === "tool" && node.data.config) {
       return node.data.config;
@@ -238,10 +329,19 @@ export default function WorkflowNodeSettings({
             // Tool outputs generally have geometry
             computed[`_${input.name}_has_geometry`] = true;
           } else if (sourceLayerId) {
-            // Find layer by numeric ID
-            const numericId = parseInt(sourceLayerId, 10);
-            const layer = layers.find((l) => l.id === numericId);
-            computed[`_${input.name}_has_geometry`] = !!layer?.feature_layer_geometry_type;
+            // sourceLayerId could be a UUID (layer_id) or numeric project layer ID
+            const isUUID = sourceLayerId.includes("-") && sourceLayerId.length > 20;
+
+            if (isUUID) {
+              // Find layer by layer_id (UUID)
+              const layer = layers.find((l) => l.layer_id === sourceLayerId);
+              computed[`_${input.name}_has_geometry`] = !!layer?.feature_layer_geometry_type;
+            } else {
+              // Find layer by numeric ID
+              const numericId = parseInt(sourceLayerId, 10);
+              const layer = layers.find((l) => l.id === numericId);
+              computed[`_${input.name}_has_geometry`] = !!layer?.feature_layer_geometry_type;
+            }
           } else {
             // Connected but can't determine - assume has geometry for better UX
             computed[`_${input.name}_has_geometry`] = true;
@@ -282,15 +382,26 @@ export default function WorkflowNodeSettings({
           const sourceLayerId = getLayerIdFromSourceNode(input.name);
 
           if (sourceLayerId && sourceLayerId !== "__tool_output__") {
-            // Find layer by numeric ID and get its dataset ID (layer_id)
-            const numericId = parseInt(sourceLayerId, 10);
-            const layer = layers.find((l) => l.id === numericId);
-            if (layer?.layer_id) {
-              mapping[input.name] = layer.layer_id;
+            // sourceLayerId could be:
+            // 1. A numeric project layer ID (e.g., "123")
+            // 2. A UUID layer_id/dataset_id (e.g., "16235883-3477-49fc-a7a5-796d7048f0c1")
+
+            // Check if it's a UUID (contains dashes and is longer than typical numeric IDs)
+            const isUUID = sourceLayerId.includes("-") && sourceLayerId.length > 20;
+
+            if (isUUID) {
+              // It's already a layer_id (dataset_id), use it directly
+              mapping[input.name] = sourceLayerId;
+            } else {
+              // Find layer by numeric ID and get its dataset ID (layer_id)
+              const numericId = parseInt(sourceLayerId, 10);
+              const layer = layers.find((l) => l.id === numericId);
+              if (layer?.layer_id) {
+                mapping[input.name] = layer.layer_id;
+              }
             }
           }
           // For tool outputs, we can't determine fields until execution
-          // TODO: Could store output schema in tool results for this
         } else if (projectLayerId) {
           // Direct layer selection
           const numericId = parseInt(projectLayerId, 10);
@@ -304,6 +415,214 @@ export default function WorkflowNodeSettings({
 
     return mapping;
   }, [layers, allInputs, values, defaultValues, connectedLayerValues, getLayerIdFromSourceNode]);
+
+  // Compute predicted columns for connected tool outputs
+  // This enables field selectors to show fields from upstream tool nodes
+  const [predictedColumns, setPredictedColumns] = useState<Record<string, Record<string, string>>>({});
+
+  // Reset all state when node changes to ensure nodes are independent
+  useEffect(() => {
+    if (node.type === "tool" && node.data.type === "tool") {
+      setValues(node.data.config || {});
+    } else {
+      setValues({});
+    }
+    // Reset predicted columns when node changes
+    setPredictedColumns({});
+  }, [node.id]); // Only reset when node ID changes
+
+  // Use ref to track latest values without triggering effect re-runs
+  const valuesRef = useRef<Record<string, unknown>>({});
+  const defaultValuesRef = useRef<Record<string, unknown>>({});
+  const connectedLayerValuesRef = useRef<Record<string, string>>({});
+  const layersRef = useRef<ProjectLayer[] | undefined>(undefined);
+
+  // Update refs when values change (doesn't trigger re-render)
+  useEffect(() => {
+    valuesRef.current = values;
+    defaultValuesRef.current = defaultValues;
+    connectedLayerValuesRef.current = connectedLayerValues;
+    layersRef.current = layers;
+  }, [values, defaultValues, connectedLayerValues, layers]);
+
+  // Compute a stable key for when we need to re-fetch predictions
+  // Only changes when graph structure changes (edges, nodes) or workflow metadata updates
+  const connectedToolInputsKey = useMemo(() => {
+    const connectedInputs: string[] = [];
+
+    for (const input of allInputs) {
+      if (input.inputType !== "layer") continue;
+
+      // Check if this input has a connection
+      const edge = edges.find(
+        (e) =>
+          e.target === node.id &&
+          (e.targetHandle === input.name || (!e.targetHandle && allInputs.length === 1))
+      );
+
+      if (!edge) continue;
+
+      const sourceNode = nodes.find((n) => n.id === edge.source);
+
+      if (!sourceNode || sourceNode.data?.type !== "tool") continue;
+
+      // Include source node info and its config hash in the key
+      const sourceConfig = JSON.stringify(sourceNode.data.config || {});
+      connectedInputs.push(`${input.name}:${sourceNode.id}:${sourceNode.data.processId}:${sourceConfig}`);
+    }
+
+    return connectedInputs.sort().join("|");
+  }, [allInputs, edges, nodes, node.id]);
+
+  // Track if fetch is in progress and the last key we fetched for
+  const fetchInProgressRef = useRef(false);
+  const lastFetchedKeyRef = useRef<string>("");
+
+  // Effect to fetch predicted columns for connected tool outputs
+  // Only runs when the stable key changes, not on every render
+  useEffect(() => {
+    if (!process || !workflowId || !connectedToolInputsKey) {
+      return;
+    }
+
+    // Wait for layers to be available before fetching predictions
+    // This ensures we can resolve layer_ids from dataset nodes
+    if (!layers || layers.length === 0) {
+      return;
+    }
+
+    // Create a complete fetch key including layers availability and node.id
+    const fetchKey = `${node.id}:${connectedToolInputsKey}:${layers.length}`;
+
+    // Skip if we already fetched for this exact key
+    if (lastFetchedKeyRef.current === fetchKey) {
+      return;
+    }
+
+    // Prevent duplicate fetches
+    if (fetchInProgressRef.current) {
+      return;
+    }
+
+    const fetchPredictedColumns = async () => {
+      fetchInProgressRef.current = true;
+
+      try {
+        const newPredicted: Record<string, Record<string, string>> = {};
+        // Use refs to get current values without them being dependencies
+        const effectiveValues = {
+          ...defaultValuesRef.current,
+          ...connectedLayerValuesRef.current,
+          ...valuesRef.current,
+        };
+        // Use layers directly since it's now a dependency
+        const currentLayers = layers;
+
+        for (const input of allInputs) {
+          if (input.inputType !== "layer") continue;
+
+          const projectLayerId = effectiveValues[input.name] as string | undefined;
+
+          if (projectLayerId !== "__connected__") continue;
+
+          // Find the edge to get source node
+          const edge = edges.find(
+            (e) =>
+              e.target === node.id &&
+              (e.targetHandle === input.name || (!e.targetHandle && allInputs.length === 1))
+          );
+          if (!edge) continue;
+
+          const sourceNode = nodes.find((n) => n.id === edge.source);
+          if (!sourceNode) continue;
+
+          // Check if we have metadata from executed node
+          if (workflowMetadata?.nodes[sourceNode.id]?.columns) {
+            newPredicted[input.name] = workflowMetadata.nodes[sourceNode.id].columns!;
+            continue;
+          }
+
+          // If source is a tool node, try to predict its output schema
+          if (sourceNode.data?.type === "tool") {
+            const sourceProcessId = sourceNode.data.processId as string;
+            const sourceConfig = (sourceNode.data.config || {}) as Record<string, unknown>;
+
+            try {
+              // Build input schemas for the source node
+              const inputSchemas: Record<string, InputSchemaInfo> = {};
+
+              // Find source node's incoming edges to get its layer inputs
+              const sourceEdges = edges.filter((e) => e.target === sourceNode.id);
+
+              for (const srcEdge of sourceEdges) {
+                const srcSourceNode = nodes.find((n) => n.id === srcEdge.source);
+
+                if (srcSourceNode?.data?.type === "dataset" && srcSourceNode.data.layerId) {
+                  // Dataset node - use its layer ID
+                  const inputName = srcEdge.targetHandle || "input_layer_id";
+                  const layerIdValue = srcSourceNode.data.layerId as string;
+
+                  // layerId might be a UUID (layer_id) or a numeric project layer id
+                  // Try to find by UUID first, then by numeric ID
+                  let layer = currentLayers?.find((l) => l.layer_id === layerIdValue);
+                  if (!layer) {
+                    const numericId = parseInt(layerIdValue, 10);
+                    if (!isNaN(numericId)) {
+                      layer = currentLayers?.find((l) => l.id === numericId);
+                    }
+                  }
+
+                  // Use the layer_id (UUID) for the prediction, or use the value directly if it's already a UUID
+                  const layerUuid = layer?.layer_id || layerIdValue;
+                  if (layerUuid) {
+                    inputSchemas[inputName] = { layer_id: layerUuid };
+                  }
+                } else if (srcSourceNode?.data?.type === "tool") {
+                  // Another tool - check if executed
+                  const inputName = srcEdge.targetHandle || "input_layer_id";
+                  if (workflowMetadata?.nodes[srcSourceNode.id]?.columns) {
+                    inputSchemas[inputName] = {
+                      columns: workflowMetadata.nodes[srcSourceNode.id].columns!,
+                    };
+                  }
+                }
+              }
+
+              const predicted = await predictNodeSchema(workflowId, {
+                process_id: sourceProcessId,
+                input_schemas: inputSchemas,
+                params: sourceConfig,
+              });
+
+              if (predicted.columns && Object.keys(predicted.columns).length > 0) {
+                newPredicted[input.name] = predicted.columns;
+              }
+            } catch (error) {
+              console.warn(`Failed to predict schema for ${sourceProcessId}:`, error);
+            }
+          }
+        }
+
+        setPredictedColumns(newPredicted);
+        // Mark this key as fetched
+        lastFetchedKeyRef.current = fetchKey;
+      } finally {
+        fetchInProgressRef.current = false;
+      }
+    };
+
+    fetchPredictedColumns();
+    // Note: We intentionally exclude allInputs, edges, nodes, workflowMetadata from deps
+    // because connectedToolInputsKey captures the relevant changes, and lastFetchedKeyRef
+    // prevents duplicate fetches for the same configuration
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    process,
+    workflowId,
+    connectedToolInputsKey, // Stable key that only changes when graph structure changes
+    node.id,
+    layers, // Re-fetch when layers become available
+  ]);
 
   // Update a single input value
   const handleInputChange = useCallback(
@@ -424,106 +743,113 @@ export default function WorkflowNodeSettings({
 
     // Render sections with inputs (matching GenericTool pattern)
     return (
-      <Container
-        header={<ToolsHeader onBack={onBack} title={process.title} />}
-        disablePadding={false}
-        body={
-          <Box sx={{ display: "flex", flexDirection: "column" }}>
-            {/* Description */}
-            <Typography variant="body2" sx={{ fontStyle: "italic", mb: theme.spacing(4) }}>
-              {process.description}
-            </Typography>
+      <>
+        <Container
+          header={<ToolsHeader onBack={onBack} title={process.title} />}
+          disablePadding={false}
+          body={
+            <Box sx={{ display: "flex", flexDirection: "column" }}>
+              {/* Description */}
+              <Typography variant="body2" sx={{ fontStyle: "italic", mb: theme.spacing(4) }}>
+                {process.description}
+              </Typography>
 
-            {/* Render sections dynamically */}
-            {sections.map((section) => {
-              // In workflows, skip sections that are handled by node connections
-              // Starting points and opportunities come from connected input nodes
-              const workflowHiddenSections = ["starting", "opportunities"];
-              if (workflowHiddenSections.includes(section.id)) {
-                return null;
-              }
+              {/* Execution Status Section */}
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
+                  {t("execution_status")}
+                </Typography>
+                <Divider sx={{ mb: 1.5 }} />
+                <Chip
+                  label={nodeStatus ? t(nodeStatus) : t("idle")}
+                  size="small"
+                  color={
+                    nodeStatus === "completed"
+                      ? "primary"
+                      : nodeStatus === "failed"
+                        ? "error"
+                        : nodeStatus === "running"
+                          ? "warning"
+                          : "default"
+                  }
+                  variant={nodeStatus ? "filled" : "outlined"}
+                  sx={{ fontWeight: 600, textTransform: "uppercase" }}
+                />
+              </Box>
 
-              // Filter out layer inputs that should come from node connections
-              const workflowHiddenWidgets = ["layer-selector", "starting-points"];
-              const visibleInputs = getVisibleInputs(section.inputs, effectiveValues).filter(
-                (input) => !workflowHiddenWidgets.includes(input.uiMeta?.widget || "")
-              );
-              const sectionEnabled = isSectionEnabled(section, effectiveValues);
+              {/* Parameters Section */}
+              <Box sx={{ mt: 3, mb: 2 }}>
+                <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
+                  {t("parameters")}
+                </Typography>
+                <Divider sx={{ mb: 1.5 }} />
+              </Box>
 
-              // Skip empty sections
-              if (visibleInputs.length === 0) {
-                return null;
-              }
+              {/* Render sections dynamically */}
+              {sections.map((section) => {
+                // In workflows, skip sections that are handled by node connections or not applicable
+                // Starting points and opportunities come from connected input nodes
+                // Scenario and result sections are not supported in workflows
+                const workflowHiddenSections = ["starting", "opportunities", "scenario", "result"];
+                if (workflowHiddenSections.includes(section.id)) {
+                  return null;
+                }
 
-              // Split into base and advanced inputs
-              const baseInputs = visibleInputs.filter((input) => !input.advanced);
-              const advancedInputs = visibleInputs.filter((input) => input.advanced);
-              const hasAdvancedOptions = advancedInputs.length > 0;
+                // Filter out layer inputs that should come from node connections
+                const workflowHiddenWidgets = ["layer-selector", "starting-points"];
+                const visibleInputs = getVisibleInputs(section.inputs, effectiveValues).filter(
+                  (input) => !workflowHiddenWidgets.includes(input.uiMeta?.widget || "")
+                );
+                const sectionEnabled = isSectionEnabled(section, effectiveValues);
 
-              const isCollapsed = collapsedSections[section.id] ?? section.collapsed;
-              const isAdvancedCollapsed = advancedCollapsed[section.id] ?? true;
-              const isFirstSection = sections.indexOf(section) === 0;
-              const isDisabled = !sectionEnabled;
+                // Skip empty sections
+                if (visibleInputs.length === 0) {
+                  return null;
+                }
 
-              return (
-                <Box
-                  key={section.id}
-                  sx={{
-                    opacity: isDisabled ? 0.5 : 1,
-                    pointerEvents: isDisabled ? "none" : "auto",
-                    transition: "opacity 0.2s ease",
-                  }}>
-                  <SectionHeader
-                    active={!isCollapsed && !isDisabled}
-                    alwaysActive={!section.collapsible || isFirstSection}
-                    label={section.label}
-                    icon={getSectionIcon(section)}
-                    disableAdvanceOptions={!hasAdvancedOptions}
-                    collapsed={hasAdvancedOptions ? isAdvancedCollapsed : isCollapsed || isDisabled}
-                    setCollapsed={
-                      hasAdvancedOptions
-                        ? () => toggleAdvanced(section.id)
-                        : section.collapsible
-                          ? () => toggleSection(section.id)
-                          : undefined
-                    }
-                    onToggleChange={
-                      section.collapsible && !isFirstSection ? () => toggleSection(section.id) : undefined
-                    }
-                  />
-                  {!isCollapsed && !isDisabled && (
-                    <SectionOptions
-                      active={true}
-                      collapsed={isAdvancedCollapsed}
-                      baseOptions={
-                        <Stack spacing={2}>
-                          {baseInputs.map((input) => (
-                            <GenericInput
-                              key={input.name}
-                              input={input}
-                              value={effectiveValues[input.name]}
-                              onChange={(value) => handleInputChange(input.name, value)}
-                              onFilterChange={
-                                input.inputType === "layer"
-                                  ? (filter) => handleFilterChange(input.name, filter)
-                                  : undefined
-                              }
-                              onNestedFiltersChange={
-                                input.inputType === "repeatable-object"
-                                  ? (filters) => handleNestedFiltersChange(input.name, filters)
-                                  : undefined
-                              }
-                              formValues={effectiveValues}
-                              schemaDefs={process.$defs}
-                              layerDatasetIds={layerDatasetIds}
-                            />
-                          ))}
-                        </Stack>
+                // Split into base and advanced inputs
+                const baseInputs = visibleInputs.filter((input) => !input.advanced);
+                const advancedInputs = visibleInputs.filter((input) => input.advanced);
+                const hasAdvancedOptions = advancedInputs.length > 0;
+
+                const isCollapsed = collapsedSections[section.id] ?? section.collapsed;
+                const isAdvancedCollapsed = advancedCollapsed[section.id] ?? true;
+                const isFirstSection = sections.indexOf(section) === 0;
+                const isDisabled = !sectionEnabled;
+
+                return (
+                  <Box
+                    key={section.id}
+                    sx={{
+                      opacity: isDisabled ? 0.5 : 1,
+                      pointerEvents: isDisabled ? "none" : "auto",
+                      transition: "opacity 0.2s ease",
+                    }}>
+                    <SectionHeader
+                      active={!isCollapsed && !isDisabled}
+                      alwaysActive={!section.collapsible || isFirstSection}
+                      label={section.label}
+                      icon={getSectionIcon(section)}
+                      disableAdvanceOptions={!hasAdvancedOptions}
+                      collapsed={hasAdvancedOptions ? isAdvancedCollapsed : isCollapsed || isDisabled}
+                      setCollapsed={
+                        hasAdvancedOptions
+                          ? () => toggleAdvanced(section.id)
+                          : section.collapsible
+                            ? () => toggleSection(section.id)
+                            : undefined
                       }
-                      advancedOptions={
-                        hasAdvancedOptions ? (
+                      onToggleChange={
+                        section.collapsible && !isFirstSection ? () => toggleSection(section.id) : undefined
+                      }
+                    />
+                    {!isCollapsed && !isDisabled && (
+                      <SectionOptions
+                        active={true}
+                        collapsed={isAdvancedCollapsed}
+                        baseOptions={
                           <Stack spacing={2}>
-                            {advancedInputs.map((input) => (
+                            {baseInputs.map((input) => (
                               <GenericInput
                                 key={input.name}
                                 input={input}
@@ -542,19 +868,149 @@ export default function WorkflowNodeSettings({
                                 formValues={effectiveValues}
                                 schemaDefs={process.$defs}
                                 layerDatasetIds={layerDatasetIds}
+                                predictedColumns={predictedColumns}
                               />
                             ))}
                           </Stack>
-                        ) : undefined
-                      }
-                    />
-                  )}
-                </Box>
-              );
-            })}
-          </Box>
-        }
-      />
+                        }
+                        advancedOptions={
+                          hasAdvancedOptions ? (
+                            <Stack spacing={2}>
+                              {advancedInputs.map((input) => (
+                                <GenericInput
+                                  key={input.name}
+                                  input={input}
+                                  value={effectiveValues[input.name]}
+                                  onChange={(value) => handleInputChange(input.name, value)}
+                                  onFilterChange={
+                                    input.inputType === "layer"
+                                      ? (filter) => handleFilterChange(input.name, filter)
+                                      : undefined
+                                  }
+                                  onNestedFiltersChange={
+                                    input.inputType === "repeatable-object"
+                                      ? (filters) => handleNestedFiltersChange(input.name, filters)
+                                      : undefined
+                                  }
+                                  formValues={effectiveValues}
+                                  schemaDefs={process.$defs}
+                                  layerDatasetIds={layerDatasetIds}
+                                  predictedColumns={predictedColumns}
+                                />
+                              ))}
+                            </Stack>
+                          ) : undefined
+                        }
+                      />
+                    )}
+                  </Box>
+                );
+              })}
+
+              {/* Dataset Details Section - shown for completed tools with results */}
+              {nodeStatus === "completed" && hasTempResult && tempLayerMetadata && (
+                <>
+                  <Box sx={{ mt: 3, mb: 2 }}>
+                    <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
+                      {t("dataset_details")}
+                    </Typography>
+                    <Divider sx={{ mb: 1.5 }} />
+                  </Box>
+
+                  <Stack spacing={1.5}>
+                    {/* Created at */}
+                    {executionInfo?.startedAt && (
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="body2" color="text.secondary">
+                          {t("created")}:
+                        </Typography>
+                        <Typography variant="body2">
+                          {formatDistance(new Date(executionInfo.startedAt * 1000), new Date(), {
+                            addSuffix: true,
+                            locale: dateLocale,
+                          })}
+                        </Typography>
+                      </Stack>
+                    )}
+
+                    {/* Features count */}
+                    <Stack direction="row" justifyContent="space-between" alignItems="center">
+                      <Typography variant="body2" color="text.secondary">
+                        {t("features")}:
+                      </Typography>
+                      <Typography variant="body2">
+                        {tempLayerMetadata.featureCount.toLocaleString()}
+                      </Typography>
+                    </Stack>
+
+                    {/* Geometry types */}
+                    {tempLayerMetadata.geometryTypes.length > 0 && (
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="body2" color="text.secondary">
+                          {t("geometry_types")}:
+                        </Typography>
+                        <Typography variant="body2">{tempLayerMetadata.geometryTypes.join(", ")}</Typography>
+                      </Stack>
+                    )}
+                  </Stack>
+                </>
+              )}
+
+              {/* Actions Section - shown for completed tools with results */}
+              {nodeStatus === "completed" && hasTempResult && (
+                <>
+                  <Box sx={{ mt: 3, mb: 2 }}>
+                    <Typography variant="body2" fontWeight="bold" color="text.secondary" sx={{ mb: 1 }}>
+                      {t("actions")}
+                    </Typography>
+                    <Divider sx={{ mb: 1.5 }} />
+                  </Box>
+
+                  <Stack spacing={1.5}>
+                    <Stack direction="row" spacing={1}>
+                      <Button
+                        variant={activeDataPanelView === "table" ? "contained" : "outlined"}
+                        size="small"
+                        startIcon={<Icon iconName={ICON_NAME.TABLE} style={{ fontSize: 16 }} />}
+                        onClick={() => dispatch(requestTableView())}
+                        sx={{ borderRadius: 4, textTransform: "none", fontWeight: "bold", flex: 1 }}>
+                        {t("table")}
+                      </Button>
+                      <Button
+                        variant={activeDataPanelView === "map" ? "contained" : "outlined"}
+                        size="small"
+                        startIcon={<Icon iconName={ICON_NAME.MAP} style={{ fontSize: 16 }} />}
+                        onClick={() => dispatch(requestMapView())}
+                        sx={{ borderRadius: 4, textTransform: "none", fontWeight: "bold", flex: 1 }}>
+                        {t("map")}
+                      </Button>
+                    </Stack>
+
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      fullWidth
+                      startIcon={<Icon iconName={ICON_NAME.LAYERS} style={{ fontSize: 16 }} />}
+                      onClick={() => setSaveDialogOpen(true)}
+                      sx={{ borderRadius: 4, textTransform: "none", fontWeight: "bold" }}>
+                      {t("save_dataset")}
+                    </Button>
+                  </Stack>
+                </>
+              )}
+            </Box>
+          }
+        />
+
+        {/* Save Dataset Dialog */}
+        <SaveDatasetDialog
+          open={saveDialogOpen}
+          onClose={() => setSaveDialogOpen(false)}
+          onSave={handleSaveDataset}
+          defaultName={process.title || node.data.label || ""}
+          isSaving={isSaving}
+        />
+      </>
     );
   }
 

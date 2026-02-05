@@ -6,7 +6,6 @@ import {
   ContentCopy as DuplicateIcon,
   PlayArrow as PlayIcon,
   SkipNext as RunToHereIcon,
-  Save as SaveIcon,
   Settings as ToolSettingsIcon,
   Warning as WarningIcon,
 } from "@mui/icons-material";
@@ -14,7 +13,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Divider,
   GlobalStyles,
   IconButton,
@@ -24,10 +22,9 @@ import {
 } from "@mui/material";
 import { keyframes, styled } from "@mui/material/styles";
 import { Handle, type NodeProps, NodeToolbar, Position, useEdges } from "@xyflow/react";
-import React, { memo, useCallback, useMemo, useState } from "react";
+import React, { memo, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useDispatch, useSelector } from "react-redux";
-import { toast } from "react-toastify";
 import { v4 as uuidv4 } from "uuid";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
@@ -286,11 +283,9 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
   const edges = useEdges();
 
   // Get execution status from context
-  const { isExecuting: _isExecuting, nodeStatuses, nodeExecutionInfo, tempLayerIds, onSaveNode } =
-    useWorkflowExecutionContext();
+  const { nodeStatuses, nodeExecutionInfo } = useWorkflowExecutionContext();
   const nodeStatus = nodeStatuses[id];
   const executionInfo = nodeExecutionInfo[id];
-  const hasTempResult = !!tempLayerIds[id];
 
   // Debug logging for execution status
   console.log(
@@ -301,24 +296,6 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
     "durationMs:",
     executionInfo?.durationMs
   );
-
-  // Saving state
-  const [isSaving, setIsSaving] = useState(false);
-
-  // Handle save node result
-  const handleSave = useCallback(async () => {
-    if (!onSaveNode || isSaving) return;
-    setIsSaving(true);
-    try {
-      await onSaveNode(id);
-      toast.success(t("layer_saved_successfully"));
-    } catch (error) {
-      console.error("Failed to save layer:", error);
-      toast.error(t("layer_save_failed"));
-    } finally {
-      setIsSaving(false);
-    }
-  }, [onSaveNode, id, isSaving, t]);
 
   // Fetch process description to determine inputs
   const { process } = useProcessDescription(data.processId);
@@ -610,25 +587,6 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
       {/* NodeToolbar - automatically shown when selected */}
       <NodeToolbar position={Position.Top} align="end">
         <ToolbarContainer>
-          {/* Save button - shown when node has temp results */}
-          {hasTempResult && (
-            <>
-              <Tooltip title={t("save_layer")} placement="top" arrow>
-                <RunButton
-                  size="small"
-                  variant="contained"
-                  color="success"
-                  startIcon={
-                    isSaving ? <CircularProgress size={14} color="inherit" /> : <SaveIcon fontSize="small" />
-                  }
-                  onClick={handleSave}
-                  disabled={isSaving}>
-                  {t("save")}
-                </RunButton>
-              </Tooltip>
-              <Divider orientation="vertical" flexItem sx={{ mx: 0.5 }} />
-            </>
-          )}
           <Tooltip title={t("run_node")} placement="top" arrow>
             <RunButton size="small" variant="text" startIcon={<PlayIcon fontSize="small" />}>
               {t("run_node")}
@@ -732,7 +690,7 @@ const ToolNode: React.FC<ToolNodeProps> = ({ id, data, selected }) => {
               )}
             </NodeIconWrapper>
           </AnimatedBorderWrapper>
-          <Typography variant="body2" fontWeight="bold" sx={{ flex: 1, wordBreak: "break-word" }}>
+          <Typography variant="caption" fontWeight={700} sx={{ flex: 1, wordBreak: "break-word" }}>
             {process?.title || t(data.processId, { defaultValue: data.label })}
           </Typography>
           {/* Duration chip - shown when completed */}

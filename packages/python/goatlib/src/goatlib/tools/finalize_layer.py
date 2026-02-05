@@ -17,10 +17,10 @@ import uuid
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 from goatlib.tools.base import BaseToolRunner
-from goatlib.tools.schemas import ToolInputBase, ToolOutputBase
+from goatlib.tools.schemas import ToolInputBase
 
 logger = logging.getLogger(__name__)
 
@@ -44,13 +44,17 @@ class FinalizeLayerParams(ToolInputBase):
     )
 
 
-class FinalizeLayerOutput(ToolOutputBase):
-    """Output from the finalize layer tool."""
+class FinalizeLayerOutput(BaseModel):
+    """Output from the finalize layer tool.
+
+    Note: This doesn't extend ToolOutputBase because this tool doesn't create
+    a layer in the normal way - it moves an existing temp layer to permanent storage.
+    """
 
     layer_id: str = Field(..., description="New permanent layer UUID")
     layer_name: str = Field(..., description="Layer name")
     project_id: str = Field(..., description="Project the layer was added to")
-    layer_project_id: str = Field(..., description="Layer-project association ID")
+    layer_project_id: int = Field(..., description="Layer-project association ID")
     feature_count: int = Field(default=0, description="Number of features")
     geometry_type: str | None = Field(default=None, description="Geometry type")
 
@@ -87,10 +91,10 @@ class FinalizeLayerRunner(BaseToolRunner[FinalizeLayerParams]):
         Returns:
             New layer_id as string
         """
-        if self.user_id is None:
+        if params.user_id is None:
             raise ValueError("user_id is required for finalize_layer")
 
-        user_id = self.user_id
+        user_id = params.user_id
         workflow_id = params.workflow_id
         node_id = params.node_id
 
@@ -202,7 +206,7 @@ class FinalizeLayerRunner(BaseToolRunner[FinalizeLayerParams]):
         async def create_db_records():
             from goatlib.tools.db import ToolDatabaseService
 
-            pool = await self.get_db_pool()
+            pool = await self.get_postgres_pool()
             db_service = ToolDatabaseService(pool, schema="customer")
 
             # Get folder_id from project
@@ -216,8 +220,8 @@ class FinalizeLayerRunner(BaseToolRunner[FinalizeLayerParams]):
             is_feature = bool(geometry_type)
             layer_type = "feature" if is_feature else "table"
 
-            # Create layer record
-            await db_service.create_layer(
+            # Create layer record - returns generated properties (with default style)
+            layer_properties = await db_service.create_layer(
                 layer_id=new_layer_id,
                 user_id=user_id,
                 folder_id=folder_id,
@@ -228,17 +232,17 @@ class FinalizeLayerRunner(BaseToolRunner[FinalizeLayerParams]):
                 extent_wkt=extent_wkt,
                 feature_count=feature_count,
                 size=parquet_path.stat().st_size,
-                properties=None,
+                properties=None,  # Will generate default style
                 tool_type=metadata.get("process_id"),
                 job_id=None,
             )
 
-            # Add to project
+            # Add to project - pass the properties from create_layer
             layer_project_id = await db_service.add_to_project(
                 layer_id=new_layer_id,
                 project_id=params.project_id,
                 name=layer_name,
-                properties=None,
+                properties=layer_properties,
             )
 
             return layer_project_id
@@ -320,5 +324,6 @@ def main(
     )
 
     runner = FinalizeLayerRunner()
+    runner.init_from_env()
     result = runner.run(params)
     return result.model_dump()
