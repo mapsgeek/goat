@@ -546,12 +546,51 @@ export default function FormulaBuilder({
         }
 
         if (Object.keys(layersMap).length === 0) {
-          setSqlPreview({
-            success: false,
-            columns: [],
-            rows: [],
-            error: "No layers available for preview. Run the workflow first so input data is available.",
+          // No real layer data available — fall back to schema-based preview.
+          // Build table_schemas from table fields and use validateSql to predict output columns.
+          const tableSchemas: Record<string, Record<string, string>> = {};
+          for (const table of tables) {
+            if (table.fields.length > 0) {
+              const colMap: Record<string, string> = {};
+              for (const f of table.fields) {
+                colMap[f.name] = f.type;
+              }
+              tableSchemas[table.alias] = colMap;
+            }
+          }
+
+          if (Object.keys(tableSchemas).length === 0) {
+            setSqlPreview({
+              success: false,
+              columns: [],
+              rows: [],
+              error: "No input schemas available. Connect dataset nodes first.",
+            });
+            return;
+          }
+
+          const validation = await validateSql({
+            sql_query: expression,
+            table_schemas: tableSchemas,
           });
+
+          if (validation.valid) {
+            setSqlPreview({
+              success: true,
+              columns: Object.entries(validation.columns).map(([name, type]) => ({
+                name,
+                type,
+              })),
+              rows: [],
+            });
+          } else {
+            setSqlPreview({
+              success: false,
+              columns: [],
+              rows: [],
+              error: validation.errors.join("; "),
+            });
+          }
           return;
         }
 
