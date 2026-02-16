@@ -834,6 +834,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             attribute_mapping = (
                 layer_info.get("attribute_mapping", {}) if layer_info else {}
             )
+            if not isinstance(attribute_mapping, dict):
+                attribute_mapping = {}
 
             # Get scenario features from PostgreSQL
             scenario_features = _get_or_create_event_loop().run_until_complete(
