@@ -886,6 +886,35 @@ class TestHistogram:
         total_in_bins = sum(bin.count for bin in result.bins)
         assert total_in_bins == 4
 
+    def test_histogram_quantile_binning(self, sample_data_table):
+        """Test histogram with quantile binning method."""
+        result = calculate_histogram(
+            sample_data_table,
+            "test_data",
+            column="value",
+            num_bins=5,
+            method="quantile",
+        )
+
+        assert len(result.bins) == 5
+        assert result.total_rows == 10
+        assert sum(bin.count for bin in result.bins) == 10
+
+    def test_histogram_custom_breaks(self, sample_data_table):
+        """Test histogram with custom internal break points."""
+        result = calculate_histogram(
+            sample_data_table,
+            "test_data",
+            column="value",
+            method="custom_breaks",
+            custom_breaks=[25, 55, 85],
+        )
+
+        assert len(result.bins) == 4
+        counts = [bin.count for bin in result.bins]
+        assert counts == [2, 3, 3, 2]
+        assert sum(counts) == 10
+
     def test_histogram_descendent_order(self, sample_data_table):
         """Test histogram with descending bin order."""
         result = calculate_histogram(

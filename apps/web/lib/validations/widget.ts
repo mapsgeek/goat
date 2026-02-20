@@ -44,6 +44,13 @@ export const valueColorScaleTypes = z.enum([
   "standard_deviation",
   "heads_and_tails",
 ]);
+export const histogramBinningMethodTypes = z.enum([
+  "equal_interval",
+  "quantile",
+  "standard_deviation",
+  "heads_and_tails",
+  "custom_breaks",
+]);
 export const categoriesStyleSourceTypes = z.enum(["statistics", "group_by"]);
 
 const chartConfigSetupBaseSchema = z.object({
@@ -110,6 +117,7 @@ export const numbersDataConfigSchema = dataConfigSchema.extend({
 });
 
 export const filterLayoutTypes = z.enum(["checkbox", "cards", "chips", "select", "range"]);
+export const pieLayoutTypes = z.enum(["center_active", "all_labels_outside", "legend"]);
 
 // Target layer schema for multi-layer attribute filtering
 export const filterTargetLayerSchema = z.object({
@@ -142,6 +150,8 @@ export const filterDataConfigSchema = dataConfigSchema.extend({
       zoom_to_selection: z.boolean().optional().default(true),
       // Color settings (for chips, checkbox, range layouts)
       color: z.string().optional().default("#0e58ff"),
+      // Custom label mapping for discrete filter values
+      label_map: z.array(z.tuple([z.string(), z.string()])).optional(),
       // Multi-layer attribute filtering
       target_layers: z.array(filterTargetLayerSchema).optional(),
       // Cross-filter options: when enabled, filter shows only values that exist in currently filtered data
@@ -180,10 +190,12 @@ export const histogramChartConfigSchema = chartsConfigBaseSchema.extend({
   options: chartConfigOptionsBaseSchema
     .extend({
       num_bins: z.number().min(1).max(20).optional().default(10),
+      x_axis_ticks: z.array(z.number()).optional(),
       min_value: z.number().optional(),
       max_value: z.number().optional(),
       include_outliers: z.boolean().optional().default(false),
       format: formatNumberTypes.optional().default("none"),
+      display_field_label: z.string().optional(),
       // Base color for bars
       color: z.string().optional().default("#0e58ff"),
       // Color when hovering over a bar
@@ -222,6 +234,8 @@ export const categoriesChartConfigSchema = chartsConfigBaseSchema.extend({
       color_range: colorRange.optional().default(DEFAULT_COLOR_RANGE),
       // Custom color mapping: array of [category_value, hex_color] tuples
       color_map: z.array(z.tuple([z.string(), z.string()])).optional(),
+      // Custom label mapping: array of [category_value, display_label] tuples
+      label_map: z.array(z.tuple([z.string(), z.string()])).optional(),
       // Color for selected/filtered portion (only used in highlight mode)
       selected_color: z.string().optional().default("#f5b704"),
       // How to respond to cross-filter selections: filter data or highlight selected portion
@@ -247,11 +261,14 @@ export const pieChartConfigSchema = chartsConfigBaseSchema.extend({
     .default({}),
   options: chartConfigOptionsBaseSchema
     .extend({
+      layout: pieLayoutTypes.optional().default("center_active"),
       num_categories: z.number().min(1).max(15).optional().default(1),
       cap_others: z.boolean().optional().default(false),
       color_range: colorRange.optional().default(DEFAULT_COLOR_RANGE),
       // Custom color mapping: array of [category_value, hex_color] tuples
       color_map: z.array(z.tuple([z.string(), z.string()])).optional(),
+      // Custom label mapping: array of [category_value, display_label] tuples
+      label_map: z.array(z.tuple([z.string(), z.string()])).optional(),
       sorting: sortTypes.optional().default("desc"),
       // Dynamic context label based on filtered data
       context_label: contextLabelSchema.optional(),

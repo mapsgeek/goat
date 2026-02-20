@@ -14,6 +14,7 @@ from pydantic import Field
 from goatlib.analysis.accessibility import (
     STATION_CONFIG_DEFAULT,
     OevGueteklasseParams,
+    OevGueteklasseStationConfig,
     OevGueteklasseTool,
     PTTimeWindow,
 )
@@ -189,6 +190,11 @@ class OevGueteklassenToolParams(ScenarioSelectorMixin, ToolInputBase):
         description="Output path for quality classes layer.",
         json_schema_extra=ui_field(section="configuration", hidden=True),
     )
+    station_config: OevGueteklasseStationConfig | None = Field(
+        default=None,
+        description="Optional custom station configuration for ÖV-Güteklassen.",
+        json_schema_extra=ui_field(section="configuration", hidden=True),
+    )
 
 
 class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
@@ -251,7 +257,7 @@ class OevGueteklassenToolRunner(BaseToolRunner[OevGueteklassenToolParams]):
             stop_times_path=stop_times_path,
             time_window=time_window,
             output_path=str(output_path),
-            station_config=STATION_CONFIG_DEFAULT,
+            station_config=params.station_config or STATION_CONFIG_DEFAULT,
             stations_output_path=str(stations_output_path),
         )
 

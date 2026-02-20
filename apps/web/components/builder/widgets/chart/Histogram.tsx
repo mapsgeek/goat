@@ -62,17 +62,36 @@ export const HistogramChartWidget = ({ config: rawConfig }: { config: HistogramC
   // In highlight mode: always fetch full data for main display
   // In filter mode: use filtered data
   const mainQueryParams = isHighlightMode ? baseQueryParams : queryParams;
+  const mainHistogramQueryParams = useMemo(() => {
+    if (!mainQueryParams) return undefined;
+    const { custom_breaks: _customBreaks, method: _method, ...restQueryParams } =
+      mainQueryParams as HistogramStatsQueryParams;
+    return {
+      ...restQueryParams,
+      method: "equal_interval",
+    } as HistogramStatsQueryParams;
+  }, [mainQueryParams]);
+
+  const selectedHistogramQueryParams = useMemo(() => {
+    if (!queryParams) return undefined;
+    const { custom_breaks: _customBreaks, method: _method, ...restQueryParams } =
+      queryParams as HistogramStatsQueryParams;
+    return {
+      ...restQueryParams,
+      method: "equal_interval",
+    } as HistogramStatsQueryParams;
+  }, [queryParams]);
 
   const { histogramStats, isLoading, isError } = useProjectLayerHistogramStats(
     layerId,
-    mainQueryParams as HistogramStatsQueryParams
+    mainHistogramQueryParams
   );
 
   // Fetch selected/filtered data (only in highlight mode)
   // The selected stats may have different bin boundaries, we'll match by range overlap
   const { histogramStats: selectedStats, isLoading: isSelectedLoading } = useProjectLayerHistogramStats(
     isHighlightMode ? layerId : undefined,
-    queryParams as HistogramStatsQueryParams
+    selectedHistogramQueryParams
   );
 
   // Only show highlight visualization when there's actually filtered data
@@ -144,6 +163,22 @@ export const HistogramChartWidget = ({ config: rawConfig }: { config: HistogramC
   const baseColor = config?.options?.color || "#0e58ff";
   const hoverColor = config?.options?.highlight_color || DEFAULT_SELECTED_COLOR;
   const selectedColor = config?.options?.selected_color || DEFAULT_SELECTED_COLOR;
+  const strokeColor = theme.palette.divider;
+
+  const displayFieldLabel = config?.options?.display_field_label || config?.setup?.column_name;
+
+  const xAxisTicks = useMemo(() => {
+    const configuredTicks = config?.options?.x_axis_ticks;
+    if (!Array.isArray(configuredTicks) || !chartData.length) return undefined;
+
+    const min = chartData[0]?.rangeStart;
+    const max = chartData[chartData.length - 1]?.rangeEnd;
+
+    return configuredTicks
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value >= min && value <= max)
+      .sort((a, b) => a - b);
+  }, [config?.options?.x_axis_ticks, chartData]);
 
   return (
     <>
@@ -158,11 +193,17 @@ export const HistogramChartWidget = ({ config: rawConfig }: { config: HistogramC
 
       {config && histogramStats && !isError && isChartConfigured && (
         <ResponsiveContainer width="100%" aspect={1.2}>
-          <BarChart data={chartData} margin={{ top: 10, right: 20, bottom: 10 }} stackOffset="none">
+          <BarChart
+            data={chartData}
+            margin={{ top: 10, right: 20, bottom: 10 }}
+            stackOffset="none"
+            barCategoryGap={0}
+            barGap={0}>
             <XAxis
               dataKey="rangeStart"
               type="number"
               domain={["dataMin", "dataMax"]}
+              ticks={xAxisTicks}
               tickFormatter={(value) => formatNumber(value, config.options?.format, i18n.language)}
               tick={{ fontSize: 10, fill: theme.palette.text.secondary }}
               tickMargin={5}
@@ -205,21 +246,26 @@ export const HistogramChartWidget = ({ config: rawConfig }: { config: HistogramC
                   dataKey="baseCount"
                   stackId="histogram"
                   fill={baseColor}
+                  fillOpacity={0.6}
+                  stroke={strokeColor}
+                  strokeWidth={1}
                   radius={[0, 0, 0, 0]}
                   cursor="pointer"
-                  activeBar={{ fill: hoverColor }}
+                  activeBar={{ fill: hoverColor, fillOpacity: 0.75 }}
                 />
                 {/* Selected portion on top with selection color */}
                 <Bar
                   dataKey="selectedCount"
                   stackId="histogram"
-                  radius={[4, 4, 0, 0]}
-                  cursor="pointer"
-                  activeBar={{ fill: hoverColor }}>
+                  radius={[0, 0, 0, 0]}
+                  cursor="pointer">
                   {chartData.map((entry, index) => (
                     <Cell
                       key={`cell-${index}`}
                       fill={entry.selectedCount && entry.selectedCount > 0 ? selectedColor : "transparent"}
+                      fillOpacity={entry.selectedCount && entry.selectedCount > 0 ? 0.9 : 0}
+                      stroke={entry.selectedCount && entry.selectedCount > 0 ? strokeColor : "none"}
+                      strokeWidth={entry.selectedCount && entry.selectedCount > 0 ? 1 : 0}
                     />
                   ))}
                 </Bar>
@@ -229,9 +275,12 @@ export const HistogramChartWidget = ({ config: rawConfig }: { config: HistogramC
               <Bar
                 dataKey="count"
                 fill={baseColor}
-                radius={[4, 4, 0, 0]}
+                fillOpacity={0.6}
+                stroke={strokeColor}
+                strokeWidth={1}
+                radius={[0, 0, 0, 0]}
                 cursor="pointer"
-                activeBar={{ fill: hoverColor }}
+                activeBar={{ fill: hoverColor, fillOpacity: 0.75 }}
               />
             )}
           </BarChart>
@@ -246,7 +295,7 @@ export const HistogramChartWidget = ({ config: rawConfig }: { config: HistogramC
             i18nKey="common:all_features_have_column"
             values={{
               nr_features: histogramStats.total_rows,
-              column_name: config?.setup?.column_name,
+              column_name: displayFieldLabel,
             }}
             components={{ b: <b /> }}
           />

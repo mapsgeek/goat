@@ -1,17 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Checkbox, FormControlLabel, Paper, Stack, Typography, useTheme } from "@mui/material";
+import { Autocomplete, Checkbox, Chip, FormControlLabel, Paper, Stack, TextField, Typography, useTheme } from "@mui/material";
 import { useParams } from "next/navigation";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import { DEFAULT_COLOR_RANGE } from "@/lib/constants/color";
+import { useLayerUniqueValues } from "@/lib/api/layers";
 import { useProjectLayers } from "@/lib/api/projects";
 import { formatNumber } from "@/lib/utils/format-number";
 import { hasNestedSchemaPath } from "@/lib/utils/zod";
 import type { FormatNumberTypes, WidgetConfigSchema } from "@/lib/validations/widget";
-import { formatNumberTypes, widgetSchemaMap, widgetTypes } from "@/lib/validations/widget";
+import {
+  formatNumberTypes,
+  pieLayoutTypes,
+  widgetSchemaMap,
+  widgetTypes,
+} from "@/lib/validations/widget";
 
 import type { SelectorItem } from "@/types/map/common";
 
@@ -561,6 +567,11 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
   const schema = widgetSchemaMap[config.type];
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [isClickAwayEnabled, setIsClickAwayEnabled] = useState(true);
+  const latestConfigRef = useRef(config);
+
+  useEffect(() => {
+    latestConfigRef.current = config;
+  }, [config]);
 
   // Check if this widget handles its own style configuration
   const hasCustomStyleHandling = widgetTypesWithCustomStyle.includes(config.type as any);
@@ -593,9 +604,26 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
     return hasNestedSchemaPath(schema, "options.context_label");
   }, [schema]);
 
+  const hasPieLayoutDef = useMemo(() => {
+    return hasNestedSchemaPath(schema, "options.layout") && config.type === widgetTypes.Enum.pie_chart;
+  }, [schema, config.type]);
+
+  const hasDisplayFieldLabelDef = useMemo(() => {
+    return hasNestedSchemaPath(schema, "options.display_field_label");
+  }, [schema]);
+
+  const hasHistogramNumBinsDef = useMemo(() => {
+    return hasNestedSchemaPath(schema, "options.num_bins");
+  }, [schema]);
+
+  const hasHistogramXAxisTicksDef = useMemo(() => {
+    return hasNestedSchemaPath(schema, "options.x_axis_ticks");
+  }, [schema]);
+
   // Check if we're in highlight mode (for showing selected color option)
   const isHighlightMode = (config as any)?.options?.selection_response === "highlight";
   const isCategoriesChart = config.type === widgetTypes.Enum.categories_chart;
+  const isHistogramChart = config.type === widgetTypes.Enum.histogram_chart;
 
   // Categories chart supports simple single-color and value-based styling
   const supportsAttributeStylingToggle = isCategoriesChart && hasColorDef && hasColorRangeDef;
@@ -603,6 +631,7 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
   const showSimpleColorPicker = hasColorDef && (!supportsAttributeStylingToggle || !isAttributeStylingEnabled);
   const valueColorScale = (config as any)?.options?.value_color_scale || "quantile";
   const styleAttributeSource = (config as any)?.options?.style_attribute_source || "statistics";
+  const pieLayout = (config as any)?.options?.layout || pieLayoutTypes.Values.center_active;
 
   const valueColorScaleOptions = useMemo(
     () => [
@@ -623,17 +652,42 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
     const operationValueFieldName = (config?.setup as any)?.operation_value;
     const groupByFieldName = (config?.setup as any)?.group_by_column_name;
     if (operationValueFieldName || (config as any)?.setup?.operation_type === "count") {
-      options.push({ value: "statistics", label: "Statistics field" });
+      options.push({ value: "statistics", label: t("statistics_field") });
     }
     if (groupByFieldName) {
-      options.push({ value: "group_by", label: "Group-by field" });
+      options.push({ value: "group_by", label: t("group_by_field") });
     }
     return options;
-  }, [config]);
+  }, [config, t]);
 
   const selectedStyleAttributeSource = useMemo(() => {
     return styleAttributeSourceOptions.find((option) => option.value === styleAttributeSource);
   }, [styleAttributeSourceOptions, styleAttributeSource]);
+
+  const pieLayoutOptions = useMemo(
+    () => [
+      { value: pieLayoutTypes.Values.center_active, label: t("pie_layout_center_active") },
+      { value: pieLayoutTypes.Values.all_labels_outside, label: t("pie_layout_all_labels_outside") },
+      { value: pieLayoutTypes.Values.legend, label: t("pie_layout_legend") },
+    ],
+    [t]
+  );
+
+  const selectedPieLayout = useMemo(() => {
+    return pieLayoutOptions.find((option) => option.value === pieLayout);
+  }, [pieLayoutOptions, pieLayout]);
+
+  const histogramXAxisTickValues = useMemo(() => {
+    const values = (config as any)?.options?.x_axis_ticks;
+    if (!Array.isArray(values)) return [] as string[];
+    return values
+      .map((value: unknown) => Number(value))
+      .filter((value: number) => Number.isFinite(value))
+      .sort((a: number, b: number) => a - b)
+      .map((value: number) => String(value));
+  }, [config]);
+
+  const [histogramXAxisTickInput, setHistogramXAxisTickInput] = useState("");
 
   const usesStatisticsStyleSource = styleAttributeSource === "statistics";
   const usesGroupByStyleSource = styleAttributeSource === "group_by";
@@ -654,6 +708,34 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
   const groupByColumnNameForStyle = useMemo(() => {
     return (config?.setup as any)?.group_by_column_name;
   }, [config?.setup]);
+
+  const styleValueCountQueryParams = useMemo(
+    () => ({
+      size: 100,
+      page: 1,
+      order: "descendent" as const,
+    }),
+    []
+  );
+
+  const { data: styleValueCountData } = useLayerUniqueValues(
+    selectedLayerDatasetIdForStyle || "",
+    groupByColumnNameForStyle || "",
+    selectedLayerDatasetIdForStyle && groupByColumnNameForStyle ? styleValueCountQueryParams : undefined
+  );
+
+  const maxStatisticsColorSteps = useMemo(() => {
+    if (!isCategoriesChart || !usesStatisticsStyleSource) {
+      return undefined;
+    }
+
+    const groupedValueCount = styleValueCountData?.items?.length;
+    if (!groupedValueCount || groupedValueCount < 1) {
+      return undefined;
+    }
+
+    return groupedValueCount;
+  }, [isCategoriesChart, usesStatisticsStyleSource, styleValueCountData?.items?.length]);
 
   // Get layer fields for context label field selection
   const { layerFields: contextLabelFields } = useLayerFields(selectedLayerDatasetIdForStyle || "");
@@ -677,29 +759,31 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
 
   const handleOptionChange = useCallback(
     (key: string, value: any) => {
+      const latestConfig = latestConfigRef.current as any;
       const updatedOptions = {
-        ...((config as any).options || {}),
+        ...(latestConfig.options || {}),
         [key]: value,
       };
       onChange({
-        ...config,
+        ...latestConfig,
         options: updatedOptions,
       } as WidgetConfigSchema);
     },
-    [config, onChange]
+    [onChange]
   );
 
   const handleSetupChange = useCallback(
     (key: string, value: any) => {
+      const latestConfig = latestConfigRef.current as any;
       onChange({
-        ...config,
+        ...latestConfig,
         setup: {
-          ...((config as any).setup || {}),
+          ...(latestConfig.setup || {}),
           [key]: value,
         },
       } as WidgetConfigSchema);
     },
-    [config, onChange]
+    [onChange]
   );
 
   const hasStyle = useMemo(() => {
@@ -712,7 +796,11 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
       hasColorMapDef ||
       hasColorRangeDef ||
       hasCustomOrderDef ||
-      hasContextLabelDef
+      hasContextLabelDef ||
+      hasPieLayoutDef ||
+      hasDisplayFieldLabelDef ||
+      hasHistogramNumBinsDef ||
+      hasHistogramXAxisTicksDef
     );
   }, [
     hasColorDef,
@@ -722,6 +810,10 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
     hasColorRangeDef,
     hasCustomOrderDef,
     hasContextLabelDef,
+    hasPieLayoutDef,
+    hasDisplayFieldLabelDef,
+    hasHistogramNumBinsDef,
+    hasHistogramXAxisTicksDef,
     hasCustomStyleHandling,
   ]);
 
@@ -762,7 +854,7 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                         }}
                       />
                     }
-                    label={<Typography variant="body2">Value-based styling</Typography>}
+                    label={<Typography variant="body2">{t("value_based_styling")}</Typography>}
                   />
                 )}
 
@@ -770,10 +862,31 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                   <Selector
                     selectedItems={selectedStyleAttributeSource}
                     setSelectedItems={(item: SelectorItem) => {
-                      handleOptionChange("style_attribute_source", item?.value || "statistics");
+                      const nextStyleSource = item?.value || "statistics";
+
+                      if (
+                        nextStyleSource === "group_by" &&
+                        Array.isArray((config as any)?.setup?.custom_order) &&
+                        (config as any).setup.custom_order.length === 0
+                      ) {
+                        onChange({
+                          ...config,
+                          setup: {
+                            ...((config as any).setup || {}),
+                            custom_order: undefined,
+                          },
+                          options: {
+                            ...((config as any).options || {}),
+                            style_attribute_source: nextStyleSource,
+                          },
+                        } as WidgetConfigSchema);
+                        return;
+                      }
+
+                      handleOptionChange("style_attribute_source", nextStyleSource);
                     }}
                     items={styleAttributeSourceOptions}
-                    label="Styling field"
+                    label={t("styling_field")}
                   />
                 )}
 
@@ -786,7 +899,11 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                   />
                 )}
 
-                {supportsAttributeStylingToggle && isAttributeStylingEnabled && usesStatisticsStyleSource && hasColorRangeDef && (
+                {supportsAttributeStylingToggle &&
+                  isAttributeStylingEnabled &&
+                  usesStatisticsStyleSource &&
+                  hasColorRangeDef &&
+                  !isCategoriesChart && (
                   <ArrowPopper
                     open={paletteOpen}
                     placement="bottom"
@@ -803,6 +920,7 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                         }}>
                         <ColorRangeSelector
                           scaleType={valueColorScale}
+                          maxSteps={maxStatisticsColorSteps}
                           selectedColorRange={selectedColorRange}
                           onSelectColorRange={(colorRange) => {
                             handleOptionChange("color_range", colorRange);
@@ -853,6 +971,106 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                   />
                 )}
 
+                {hasPieLayoutDef && (
+                  <Selector
+                    selectedItems={selectedPieLayout}
+                    setSelectedItems={(item: SelectorItem) => {
+                      handleOptionChange("layout", item?.value);
+                    }}
+                    items={pieLayoutOptions}
+                    label={t("layout")}
+                  />
+                )}
+
+                {hasDisplayFieldLabelDef && (
+                  <TextFieldInput
+                    type="text"
+                    label={t("field_display_name")}
+                    placeholder={t("field_display_name_placeholder")}
+                    clearable
+                    value={(config as any)?.options?.display_field_label || ""}
+                    onChange={(value: string) => {
+                      handleOptionChange("display_field_label", value || undefined);
+                    }}
+                  />
+                )}
+
+                {isHistogramChart && hasHistogramNumBinsDef && (
+                  <TextFieldInput
+                    type="number"
+                    label={t("number_of_bins")}
+                    clearable={false}
+                    value={String((config as any)?.options?.num_bins || 10)}
+                    onChange={(value: string) => {
+                      const parsed = Number.parseInt(value, 10);
+                      const sanitized = Number.isFinite(parsed)
+                        ? Math.min(20, Math.max(1, parsed))
+                        : 10;
+                      handleOptionChange("num_bins", sanitized);
+                    }}
+                  />
+                )}
+
+                {isHistogramChart && hasHistogramXAxisTicksDef && (
+                  <Stack spacing={0.5}>
+                    <Typography variant="body2">{t("x_axis_tick_values")}</Typography>
+                    <Autocomplete
+                      multiple
+                      freeSolo
+                      size="small"
+                      options={[]}
+                      value={histogramXAxisTickValues}
+                      inputValue={histogramXAxisTickInput}
+                      filterSelectedOptions
+                      onInputChange={(_, value) => {
+                        setHistogramXAxisTickInput(value);
+                      }}
+                      onChange={(_, values) => {
+                        const parsed = values
+                          .flatMap((value) => String(value).split(/[;,\s]+/))
+                          .map((value) => Number(value.trim()))
+                          .filter((value) => Number.isFinite(value));
+
+                        handleOptionChange(
+                          "x_axis_ticks",
+                          parsed.length ? Array.from(new Set(parsed)).sort((a, b) => a - b) : undefined
+                        );
+                        setHistogramXAxisTickInput("");
+                      }}
+                      renderTags={(value, getTagProps) =>
+                        value.map((option, index) => {
+                          const { key, ...tagProps } = getTagProps({ index });
+                          return <Chip key={key} label={option} size="small" {...tagProps} />;
+                        })
+                      }
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          size="small"
+                          placeholder={t("x_axis_tick_values_placeholder")}
+                          onBlur={() => {
+                            const pendingInput = histogramXAxisTickInput.trim();
+                            if (!pendingInput) return;
+
+                            const parsed = [
+                              ...histogramXAxisTickValues,
+                              ...pendingInput.split(/[;,\s]+/),
+                            ]
+                              .map((value) => Number(String(value).trim()))
+                              .filter((value) => Number.isFinite(value));
+
+                            handleOptionChange(
+                              "x_axis_ticks",
+                              parsed.length ? Array.from(new Set(parsed)).sort((a, b) => a - b) : undefined
+                            );
+                            setHistogramXAxisTickInput("");
+                          }}
+                        />
+                      )}
+                    />
+                  </Stack>
+                )}
+
                 {/* Selection color - only shown when selection_response is "highlight" */}
                 {hasSelectedColorDef && isHighlightMode && (
                   <WidgetColorPicker
@@ -866,7 +1084,7 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                 {hasColorMapDef &&
                   hasCustomOrderDef &&
                   isAttributeStylingEnabled &&
-                  (!isCategoriesChart || usesGroupByStyleSource) &&
+                  (!isCategoriesChart || usesGroupByStyleSource || usesStatisticsStyleSource) &&
                   selectedLayerDatasetIdForStyle &&
                   groupByColumnNameForStyle && (
                     <CategoryColorConfig
@@ -874,10 +1092,11 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                       fieldName={groupByColumnNameForStyle}
                       customOrder={(config as any)?.setup?.custom_order}
                       colorMap={(config as any)?.options?.color_map}
+                      labelMap={(config as any)?.options?.label_map}
                       colorRange={(config as any)?.options?.color_range}
                       colorPalette={(config as any)?.options?.color_range?.colors}
-                      onChange={(order, colorMap) => {
-                        // Update both setup.custom_order and options.color_map atomically
+                      onChange={(order, colorMap, labelMap) => {
+                        // Update setup.custom_order + options.color_map + options.label_map atomically
                         onChange({
                           ...config,
                           setup: {
@@ -887,11 +1106,12 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                           options: {
                             ...((config as any).options || {}),
                             color_map: colorMap,
+                            label_map: labelMap,
                           },
                         } as WidgetConfigSchema);
                       }}
-                      onPaletteChange={(colorRange, order, colorMap) => {
-                        // Update color_range, custom_order, and color_map atomically
+                      onPaletteChange={(colorRange, order, colorMap, labelMap) => {
+                        // Update color_range, custom_order, color_map and label_map atomically
                         onChange({
                           ...config,
                           setup: {
@@ -902,6 +1122,7 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                             ...((config as any).options || {}),
                             color_range: colorRange,
                             color_map: colorMap,
+                            label_map: labelMap,
                           },
                         } as WidgetConfigSchema);
                       }}
@@ -925,8 +1146,11 @@ export const WidgetStyle = ({ active = true, sectionLabel, config, onChange }: W
                     />
                   )}
 
-                {/* Context label for pie charts - shows dynamic label based on filtered data */}
-                {hasContextLabelDef && selectedLayerDatasetIdForStyle && !isCategoriesChart && (
+                {/* Context label configuration (disabled for pie charts) */}
+                {hasContextLabelDef &&
+                  selectedLayerDatasetIdForStyle &&
+                  !isCategoriesChart &&
+                  config.type !== widgetTypes.Enum.pie_chart && (
                   <>
                     <LayerFieldSelector
                       fields={contextLabelFields}

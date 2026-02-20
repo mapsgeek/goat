@@ -1,7 +1,7 @@
 import { Box, Typography, useTheme } from "@mui/material";
 import LinearProgress from "@mui/material/LinearProgress";
 import chroma from "chroma-js";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { useProjectLayerAggregationStats } from "@/lib/api/projects";
@@ -141,8 +141,13 @@ export const CategoriesChartWidget = ({ config: rawConfig }: { config: Categorie
     if (!originalData.length) return originalData;
 
     const customOrder = config?.setup?.custom_order;
-    if (!customOrder || customOrder.length === 0) {
+
+    if (customOrder === undefined) {
       return originalData;
+    }
+
+    if (customOrder.length === 0) {
+      return [];
     }
 
     // Sort by custom order - items in customOrder come first in that order,
@@ -179,6 +184,21 @@ export const CategoriesChartWidget = ({ config: rawConfig }: { config: Categorie
     });
     return lookup;
   }, [config?.options?.color_map]);
+
+  const labelMapLookup = useMemo(() => {
+    const lookup = new Map<string, string>();
+    config?.options?.label_map?.forEach(([value, label]) => {
+      lookup.set(normalizeValue(value), label);
+    });
+    return lookup;
+  }, [config?.options?.label_map]);
+
+  const getDisplayLabel = useCallback(
+    (groupedValue: string) => {
+      return labelMapLookup.get(normalizeValue(groupedValue)) || groupedValue;
+    },
+    [labelMapLookup]
+  );
 
   // Generate base colors for each category
   const baseColors = useMemo(() => {
@@ -239,11 +259,12 @@ export const CategoriesChartWidget = ({ config: rawConfig }: { config: Categorie
       thresholds = getQuantileThresholds(values, palette.length);
     }
 
-    if (singleColor) {
-      return displayData.map(() => singleColor);
-    }
-
     return displayData.map((item) => {
+      const mappedColor = colorMapLookup.get(normalizeValue(item.grouped_value));
+      if (mappedColor) {
+        return mappedColor;
+      }
+
       const classIndex = getClassIndex(item.operation_value, thresholds);
       return palette[Math.min(classIndex, palette.length - 1)];
     });
@@ -340,7 +361,7 @@ export const CategoriesChartWidget = ({ config: rawConfig }: { config: Categorie
                 }}>
                 <Box sx={{ display: "flex", justifyContent: "space-between", mb: 0.5 }}>
                   <Typography variant="caption" fontWeight={500}>
-                    {category.grouped_value}
+                    {getDisplayLabel(category.grouped_value)}
                   </Typography>
                   <Typography variant="caption" fontWeight={500}>
                     {showHighlight && selectedValue > 0 ? `${selectedValue} / ${displayValue}` : displayValue}
