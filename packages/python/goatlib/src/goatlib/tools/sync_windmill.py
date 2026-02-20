@@ -200,6 +200,7 @@ def main(
     folder_id: str,
     nodes: list,
     edges: list,
+    variables: list | None = None,
 ) -> dict:
     from goatlib.tools.workflow_runner import main as _main
     return _main(
@@ -209,6 +210,7 @@ def main(
         folder_id=folder_id,
         nodes=nodes,
         edges=edges,
+        variables=variables,
     )
 '''
         results.append(

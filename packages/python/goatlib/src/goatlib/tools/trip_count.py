@@ -162,6 +162,37 @@ class TripCountToolRunner(BaseToolRunner[TripCountToolParams]):
     output_geometry_type = "point"
     default_output_name = get_default_layer_name("trip_count", "en")
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Predict trip count output schema.
+
+        Trip count outputs:
+        - stop_id: GTFS stop identifier
+        - stop_name: station name
+        - bus: bus trip count
+        - tram: tram trip count
+        - metro: metro/subway trip count
+        - rail: rail/train trip count
+        - other: other transport mode trip count
+        - total: total trip count (all modes)
+        - geometry: Point location of the station
+        """
+        return {
+            "stop_id": "VARCHAR",
+            "stop_name": "VARCHAR",
+            "bus": "INTEGER",
+            "tram": "INTEGER",
+            "metro": "INTEGER",
+            "rail": "INTEGER",
+            "other": "INTEGER",
+            "total": "INTEGER",
+            "geometry": "GEOMETRY",
+        }
+
     def get_layer_properties(
         self: Self,
         params: TripCountToolParams,

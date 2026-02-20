@@ -11,6 +11,7 @@ Usage:
 """
 
 import logging
+import re
 from typing import Any
 
 import wmill
@@ -23,7 +24,7 @@ class WorkflowNode(BaseModel):
     """A node in the workflow graph."""
 
     id: str
-    type: str  # "dataset", "tool", "result"
+    type: str  # "dataset", "tool", "export", "textAnnotation"
     data: dict[str, Any]
 
 
@@ -46,6 +47,9 @@ class WorkflowRunnerParams(BaseModel):
     folder_id: str = Field(..., description="Folder UUID for project")
     nodes: list[dict[str, Any]] = Field(..., description="Workflow nodes")
     edges: list[dict[str, Any]] = Field(..., description="Workflow edges")
+    variables: list[dict[str, Any]] = Field(
+        default_factory=list, description="Workflow variables"
+    )
 
 
 class WorkflowResult(BaseModel):
@@ -60,6 +64,65 @@ class WorkflowResult(BaseModel):
         default_factory=list,
         description="Any errors encountered",
     )
+
+
+# Regex to match {{@variable_name}} references
+VARIABLE_PATTERN = re.compile(r"\{\{@([a-zA-Z_][a-zA-Z0-9_]*)\}\}")
+
+
+def resolve_variables(
+    value: Any,  # noqa: ANN401
+    var_map: dict[str, Any],
+) -> Any:  # noqa: ANN401
+    """Resolve {{@variable_name}} references in a value.
+
+    If the entire value is a single variable reference, the resolved value
+    preserves its original type (e.g., number stays number).
+    If a variable is embedded in a larger string, the result is always a string.
+    """
+    if not isinstance(value, str):
+        return value
+
+    # Full match: entire value is one variable reference — preserve type
+    match = VARIABLE_PATTERN.fullmatch(value)
+    if match:
+        var_name = match.group(1)
+        if var_name not in var_map:
+            raise ValueError(f"Unknown workflow variable: {var_name}")
+        return var_map[var_name]
+
+    # Embedded references: substitute within the string
+    def _replace(m: re.Match) -> str:  # type: ignore[type-arg]
+        var_name = m.group(1)
+        if var_name not in var_map:
+            raise ValueError(f"Unknown workflow variable: {var_name}")
+        return str(var_map[var_name])
+
+    if VARIABLE_PATTERN.search(value):
+        return VARIABLE_PATTERN.sub(_replace, value)
+
+    return value
+
+
+def substitute_variables_in_config(
+    config: dict[str, Any],
+    var_map: dict[str, Any],
+) -> dict[str, Any]:
+    """Recursively substitute variable references in a node config dict."""
+    resolved: dict[str, Any] = {}
+    for key, value in config.items():
+        if isinstance(value, dict):
+            resolved[key] = substitute_variables_in_config(value, var_map)
+        elif isinstance(value, list):
+            resolved[key] = [
+                substitute_variables_in_config(item, var_map)
+                if isinstance(item, dict)
+                else resolve_variables(item, var_map)
+                for item in value
+            ]
+        else:
+            resolved[key] = resolve_variables(value, var_map)
+    return resolved
 
 
 def topological_sort(nodes: list[dict], edges: list[dict]) -> list[dict]:
@@ -140,6 +203,16 @@ def build_tool_inputs(
     node_data = node.get("data", {})
     inputs: dict[str, Any] = dict(node_data.get("config", {}))
 
+    # Substitute workflow variables in config values
+    if params.variables:
+        var_map = {
+            v["name"]: v.get("defaultValue")
+            for v in params.variables
+            if v.get("name")
+        }
+        if var_map:
+            inputs = substitute_variables_in_config(inputs, var_map)
+
     # Process incoming edges to get layer inputs
     for edge in edges:
         if edge["target"] != node["id"]:
@@ -168,6 +241,24 @@ def build_tool_inputs(
                     # Convert handle name: input_layer_id -> input_layer_filter
                     filter_key = target_handle.replace("_id", "_filter")
                     inputs[filter_key] = filter_config
+
+    # For custom_sql: compact sparse numbered inputs so they start at 1.
+    # E.g. if only input_layer_2_id is connected, remap it to input_layer_1_id
+    # so the SQL alias "input_1" always refers to the first connected layer.
+    process_id = node_data.get("processId")
+    if process_id == "custom_sql":
+        numbered_keys = sorted(
+            k for k in list(inputs) if k.startswith("input_layer_") and k.endswith("_id")
+        )
+        for new_idx, key in enumerate(numbered_keys, start=1):
+            new_key = f"input_layer_{new_idx}_id"
+            if key != new_key:
+                inputs[new_key] = inputs.pop(key)
+                # Also remap the corresponding filter key
+                old_filter = key.replace("_id", "_filter")
+                new_filter = new_key.replace("_id", "_filter")
+                if old_filter in inputs:
+                    inputs[new_filter] = inputs.pop(old_filter)
 
     # Add workflow context
     inputs["user_id"] = params.user_id
@@ -290,6 +381,7 @@ def main(
     folder_id: str,
     nodes: list[dict],
     edges: list[dict],
+    variables: list[dict] | None = None,
 ) -> dict:
     """Execute workflow: run all tool nodes in topological order.
 
@@ -317,6 +409,7 @@ def main(
         folder_id=folder_id,
         nodes=nodes,
         edges=edges,
+        variables=variables or [],
     )
 
     # Clean up previous temp results for this workflow
@@ -340,7 +433,7 @@ def main(
     for node in sorted_nodes:
         node_type = node.get("data", {}).get("type")
 
-        # Skip non-tool nodes (datasets, results)
+        # Skip non-tool nodes (datasets, results, exports)
         if node_type != "tool":
             continue
 
@@ -392,6 +485,101 @@ def main(
             )
             # Stop execution on error - downstream nodes depend on this
             break
+
+    print(
+        f"[workflow_runner] Tool nodes complete: {len(results)} results, {len(errors)} errors"
+    )
+
+    # Finalize export nodes (only if no errors from tool execution)
+    if not errors:
+        export_nodes = [
+            n for n in sorted_nodes if n.get("data", {}).get("type") == "export"
+        ]
+        if export_nodes:
+            print(f"[workflow_runner] Processing {len(export_nodes)} export node(s)...")
+
+        for export_node in export_nodes:
+            export_node_id = export_node["id"]
+            export_data = export_node.get("data", {})
+            dataset_name = export_data.get("datasetName", "").strip()
+
+            if not dataset_name:
+                print(
+                    f"[workflow_runner] Export node {export_node_id}: no dataset name, skipping"
+                )
+                continue
+
+            # Find the upstream node connected to this export node
+            incoming_edge = next(
+                (e for e in edges if e["target"] == export_node_id), None
+            )
+            if not incoming_edge:
+                print(
+                    f"[workflow_runner] Export node {export_node_id}: no incoming edge, skipping"
+                )
+                continue
+
+            source_node_id = incoming_edge["source"]
+
+            # Verify the source node has a temp result
+            source_result = results.get(source_node_id)
+            if not source_result or not source_result.get("temp_layer_id"):
+                print(
+                    f"[workflow_runner] Export node {export_node_id}: "
+                    f"source {source_node_id} has no temp result, skipping"
+                )
+                continue
+
+            print(
+                f"[workflow_runner] Finalizing export node {export_node_id} "
+                f"(source={source_node_id}, name={dataset_name})"
+            )
+
+            try:
+                finalize_inputs = {
+                    "user_id": params.user_id,
+                    "workflow_id": params.workflow_id,
+                    "node_id": source_node_id,  # Source node's temp dir
+                    "export_node_id": export_node_id,  # For status tracking
+                    "project_id": params.project_id,
+                    "folder_id": params.folder_id,
+                    "layer_name": dataset_name,
+                    "delete_temp": False,  # Keep temp files for frontend preview
+                }
+
+                job_id, result = run_tool_node(
+                    export_node_id, "finalize_layer", finalize_inputs
+                )
+
+                node_jobs[export_node_id] = job_id
+                results[export_node_id] = result
+
+                if "error" in result:
+                    print(
+                        f"[workflow_runner] Export node {export_node_id} failed: "
+                        f"{result.get('error')}"
+                    )
+                    errors.append(
+                        {
+                            "node_id": export_node_id,
+                            "error": result.get("error"),
+                        }
+                    )
+                else:
+                    print(
+                        f"[workflow_runner] Export node {export_node_id} completed: "
+                        f"layer_id={result.get('layer_id')}"
+                    )
+
+            except Exception as e:
+                print(f"[workflow_runner] Export node {export_node_id} failed: {e}")
+                logger.error(f"Export node {export_node_id} failed: {e}")
+                errors.append(
+                    {
+                        "node_id": export_node_id,
+                        "error": str(e),
+                    }
+                )
 
     print(
         f"[workflow_runner] Workflow complete: {len(results)} results, {len(errors)} errors"

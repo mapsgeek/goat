@@ -17,6 +17,7 @@ import {
   selectSelectedNodeId,
   selectSelectedWorkflow,
   selectSelectedWorkflowId,
+  selectVariables,
   selectViewport,
 } from "@/lib/store/workflow/selectors";
 import {
@@ -33,6 +34,7 @@ import type { WorkflowNode } from "@/lib/validations/workflow";
 import { useWorkflowExecution } from "@/hooks/workflows/useWorkflowExecution";
 
 import WorkflowCanvas from "@/components/workflows/canvas/WorkflowCanvas";
+import { WorkflowExecutionProvider } from "@/components/workflows/context/WorkflowExecutionContext";
 import WorkflowDataPanel from "@/components/workflows/panels/WorkflowDataPanel";
 import WorkflowsConfigPanel from "@/components/workflows/panels/WorkflowsConfigPanel";
 import WorkflowsNodesPanel from "@/components/workflows/panels/WorkflowsNodesPanel";
@@ -67,6 +69,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
   const edges = useSelector(selectEdges);
   const viewport = useSelector(selectViewport);
   const isDirty = useSelector(selectIsDirty);
+  const variables = useSelector(selectVariables);
 
   // Ref to track drag data
   const dragDataRef = useRef<{
@@ -75,6 +78,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
     layerId?: string;
     layerName?: string;
     geometryType?: string;
+    layerType?: string;
     layerCql?: { op: string; args: unknown[] };
   } | null>(null);
 
@@ -85,12 +89,21 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
   const { workflows, mutate: mutateWorkflows } = useWorkflows(project?.id);
 
   // Workflow execution hook
-  const { isExecuting, canExecute, nodeStatuses, nodeExecutionInfo, tempLayerIds, execute, finalizeNode } =
-    useWorkflowExecution({
-      workflow: selectedWorkflow ?? undefined,
-      projectId: project?.id,
-      folderId: project?.folder_id,
-    });
+  const {
+    isExecuting,
+    canExecute,
+    nodeStatuses,
+    nodeExecutionInfo,
+    tempLayerIds,
+    exportedLayerIds,
+    execute,
+    cancel,
+    finalizeNode,
+  } = useWorkflowExecution({
+    workflow: selectedWorkflow ?? undefined,
+    projectId: project?.id,
+    folderId: project?.folder_id,
+  });
 
   // Sync workflows from API to Redux
   useEffect(() => {
@@ -131,6 +144,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
             targetHandle: edge.targetHandle || undefined,
           })),
           viewport,
+          variables,
         };
 
         await updateWorkflowApi(project.id, selectedWorkflow.id, { config });
@@ -146,7 +160,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [isDirty, selectedWorkflow, project?.id, nodes, edges, viewport, dispatch, mutateWorkflows]);
+  }, [isDirty, selectedWorkflow, project?.id, nodes, edges, viewport, variables, dispatch, mutateWorkflows]);
 
   // Handle workflow selection (from config panel)
   // Only dispatch if the ID actually changes to avoid clearing selectedNodeId
@@ -182,6 +196,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
         layerId: layer.layer_id, // Use the actual layer ID (UUID)
         layerName: layer.name,
         geometryType: layer.feature_layer_geometry_type || undefined,
+        layerType: layer.type || undefined,
         layerCql: hasValidCql ? (layerCql as { op: string; args: unknown[] }) : undefined,
       };
       event.dataTransfer.setData("application/reactflow", "dataset");
@@ -232,7 +247,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
 
       if (!selectedWorkflowId || !dragDataRef.current || !reactFlowInstance) return;
 
-      const { nodeType, toolId, layerId, layerName, geometryType, layerCql } = dragDataRef.current;
+      const { nodeType, toolId, layerId, layerName, geometryType, layerType, layerCql } = dragDataRef.current;
       dragDataRef.current = null;
 
       // Get canvas position from drop coordinates - use screen coordinates directly
@@ -272,6 +287,7 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
                 layerId: layerId,
                 layerName: layerName,
                 geometryType: geometryType || undefined,
+                layerType: (layerType as "feature" | "table" | "raster") || undefined,
                 filter: inheritedFilter,
                 filterInitialized: true, // Mark as initialized so settings panel doesn't re-copy
               },
@@ -306,6 +322,22 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
             },
           })
         );
+      } else if (nodeType === "export") {
+        dispatch(
+          addNode({
+            id: `export-${uuidv4()}`,
+            type: "export",
+            position,
+            data: {
+              type: "export",
+              label: "Export Dataset",
+              datasetName: "",
+              addToProject: true,
+              overwritePrevious: false,
+              status: "idle",
+            },
+          })
+        );
       }
     },
     [selectedWorkflowId, reactFlowInstance, dispatch]
@@ -313,66 +345,71 @@ const WorkflowsLayoutInner: React.FC<WorkflowsLayoutProps> = ({
 
   return (
     <MapProvider>
-      <Box
-        sx={{
-          display: "flex",
-          width: "100%",
-          height: "100%",
-          overflow: "hidden",
-          backgroundColor: theme.palette.background.default,
-        }}>
-        {/* Left Panel - Workflow list and Layers */}
-        <WorkflowsConfigPanel
-          project={project}
-          projectLayers={projectLayers}
-          projectLayerGroups={projectLayerGroups}
-          selectedWorkflow={selectedWorkflow ?? null}
-          onSelectWorkflow={handleSelectWorkflow}
-          onLayerDragStart={handleLayerDragStart}
-        />
-
-        {/* Center - Canvas and Data Panel */}
+      <WorkflowExecutionProvider
+        isExecuting={isExecuting}
+        nodeStatuses={nodeStatuses}
+        nodeExecutionInfo={nodeExecutionInfo}
+        tempLayerIds={tempLayerIds}
+        exportedLayerIds={exportedLayerIds}
+        onSaveNode={finalizeNode}>
         <Box
           sx={{
-            flex: 1,
             display: "flex",
-            flexDirection: "column",
-            minWidth: 0,
+            width: "100%",
             height: "100%",
             overflow: "hidden",
+            backgroundColor: theme.palette.background.default,
           }}>
-          {/* Canvas area */}
-          <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
-            <WorkflowCanvas
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              isExecuting={isExecuting}
-              canExecute={canExecute}
-              nodeStatuses={nodeStatuses}
-              nodeExecutionInfo={nodeExecutionInfo}
+          {/* Left Panel - Workflow list and Layers */}
+          <WorkflowsConfigPanel
+            project={project}
+            projectLayers={projectLayers}
+            projectLayerGroups={projectLayerGroups}
+            selectedWorkflow={selectedWorkflow ?? null}
+            onSelectWorkflow={handleSelectWorkflow}
+            onLayerDragStart={handleLayerDragStart}
+          />
+
+          {/* Center - Canvas and Data Panel */}
+          <Box
+            sx={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              minWidth: 0,
+              height: "100%",
+              overflow: "hidden",
+            }}>
+            {/* Canvas area */}
+            <Box sx={{ flex: 1, minHeight: 0, position: "relative" }}>
+              <WorkflowCanvas
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                isExecuting={isExecuting}
+                canExecute={canExecute}
+                onRun={execute}
+                onStop={cancel}
+              />
+            </Box>
+
+            {/* Bottom Data Panel - Table/Map view */}
+            <WorkflowDataPanel
+              selectedNode={selectedNode}
               tempLayerIds={tempLayerIds}
-              onRun={execute}
-              onSaveNode={finalizeNode}
+              workflowId={selectedWorkflow?.id}
             />
           </Box>
 
-          {/* Bottom Data Panel - Table/Map view */}
-          <WorkflowDataPanel
-            selectedNode={selectedNode}
-            tempLayerIds={tempLayerIds}
+          {/* Right Panel - Tools palette & Node Settings */}
+          <WorkflowsNodesPanel
+            config={selectedWorkflow?.config || null}
+            selectedNodeId={selectedNodeId}
+            projectLayers={projectLayers}
             workflowId={selectedWorkflow?.id}
+            onDragStart={handleDragStart}
           />
         </Box>
-
-        {/* Right Panel - Tools palette & Node Settings */}
-        <WorkflowsNodesPanel
-          config={selectedWorkflow?.config || null}
-          selectedNodeId={selectedNodeId}
-          projectLayers={projectLayers}
-          workflowId={selectedWorkflow?.id}
-          onDragStart={handleDragStart}
-        />
-      </Box>
+      </WorkflowExecutionProvider>
     </MapProvider>
   );
 };

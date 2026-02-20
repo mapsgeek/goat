@@ -1,9 +1,11 @@
 "use client";
 
 import {
+  DataObject as VariablesIcon,
   Redo as RedoIcon,
   PlayArrow as RunIcon,
   NearMe as SelectIcon,
+  Stop as StopIcon,
   StickyNote2 as TextIcon,
   Undo as UndoIcon,
 } from "@mui/icons-material";
@@ -78,6 +80,24 @@ const RunButton = styled(Button)(({ theme }) => ({
   },
 }));
 
+const StopButton = styled(Button)(({ theme }) => ({
+  height: 40,
+  paddingLeft: theme.spacing(2),
+  paddingRight: theme.spacing(2.5),
+  borderRadius: 20,
+  backgroundColor: theme.palette.error.main,
+  color: theme.palette.error.contrastText,
+  fontWeight: 600,
+  textTransform: "none",
+  boxShadow: "0 2px 8px rgba(0, 0, 0, 0.15)",
+  "&:hover": {
+    backgroundColor: theme.palette.error.dark,
+  },
+  "& .MuiButton-startIcon": {
+    marginRight: theme.spacing(0.5),
+  },
+}));
+
 type CanvasTool = "select" | "text";
 
 interface CanvasToolbarProps {
@@ -88,8 +108,10 @@ interface CanvasToolbarProps {
   onUndo: () => void;
   onRedo: () => void;
   onRun: () => void;
+  onStop?: () => void;
   isRunning?: boolean;
   canRun?: boolean;
+  onVariablesClick?: () => void;
 }
 
 const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
@@ -100,8 +122,10 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
   onUndo,
   onRedo,
   onRun,
+  onStop,
   isRunning = false,
   canRun = true,
+  onVariablesClick,
 }) => {
   const { t } = useTranslation("common");
 
@@ -140,17 +164,39 @@ const CanvasToolbar: React.FC<CanvasToolbarProps> = ({
             </ToolButton>
           </span>
         </Tooltip>
+
+        {onVariablesClick && (
+          <>
+            <Divider />
+            <Tooltip title={t("workflow_variables")} placement="top">
+              <ToolButton onClick={onVariablesClick}>
+                <VariablesIcon fontSize="small" />
+              </ToolButton>
+            </Tooltip>
+          </>
+        )}
       </ToolGroup>
 
-      {/* Run Button - Separate for emphasis */}
-      <RunButton
-        disabled={!canRun || isRunning}
-        onClick={onRun}
-        startIcon={<RunIcon />}
-        variant="contained"
-        disableElevation>
-        {t("workflow_run")}
-      </RunButton>
+      {/* Run/Stop Button - Separate for emphasis */}
+      {isRunning ? (
+        <StopButton
+          onClick={onStop}
+          startIcon={<StopIcon />}
+          variant="contained"
+          color="error"
+          disableElevation>
+          {t("stop")}
+        </StopButton>
+      ) : (
+        <RunButton
+          disabled={!canRun}
+          onClick={onRun}
+          startIcon={<RunIcon />}
+          variant="contained"
+          disableElevation>
+          {t("workflow_run")}
+        </RunButton>
+      )}
     </ToolbarContainer>
   );
 };

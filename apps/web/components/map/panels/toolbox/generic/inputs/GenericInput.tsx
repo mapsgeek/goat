@@ -39,7 +39,12 @@ interface GenericInputProps {
   excludedLayerIds?: string[];
   /** Map of layer input names to their dataset IDs (for connected layers in workflows) */
   layerDatasetIds?: Record<string, string>;
+  /** Map of layer input names to their predicted columns (for connected tool outputs) */
+  predictedColumns?: Record<string, Record<string, string>>;
 }
+
+// Stable empty object reference to avoid creating new references on each render
+const EMPTY_FORM_VALUES: Record<string, unknown> = {};
 
 export default function GenericInput({
   input,
@@ -48,11 +53,15 @@ export default function GenericInput({
   onFilterChange,
   onNestedFiltersChange,
   disabled,
-  formValues = {},
+  formValues = EMPTY_FORM_VALUES,
   schemaDefs,
   excludedLayerIds,
   layerDatasetIds,
+  predictedColumns,
 }: GenericInputProps) {
+  // Ensure formValues is always an object (handles explicit undefined) - use stable reference
+  const safeFormValues = formValues && Object.keys(formValues).length > 0 ? formValues : EMPTY_FORM_VALUES;
+
   switch (input.inputType) {
     case "layer":
       return (
@@ -73,8 +82,9 @@ export default function GenericInput({
           value={value}
           onChange={onChange}
           disabled={disabled}
-          formValues={formValues}
+          formValues={safeFormValues}
           layerDatasetIds={layerDatasetIds}
+          predictedColumns={predictedColumns}
         />
       );
 
@@ -85,7 +95,9 @@ export default function GenericInput({
           value={value}
           onChange={onChange}
           disabled={disabled}
-          formValues={formValues}
+          formValues={safeFormValues}
+          layerDatasetIds={layerDatasetIds}
+          predictedColumns={predictedColumns}
         />
       );
 
@@ -106,7 +118,7 @@ export default function GenericInput({
           value={value as string | number | boolean | undefined}
           onChange={onChange}
           disabled={disabled}
-          formValues={formValues}
+          formValues={safeFormValues}
         />
       );
 
@@ -190,7 +202,9 @@ export default function GenericInput({
           onNestedFiltersChange={onNestedFiltersChange}
           disabled={disabled}
           schemaDefs={schemaDefs}
-          formValues={formValues}
+          formValues={safeFormValues}
+          layerDatasetIds={layerDatasetIds}
+          predictedColumns={predictedColumns}
         />
       );
 
@@ -202,7 +216,7 @@ export default function GenericInput({
           onChange={onChange}
           disabled={disabled}
           schemaDefs={schemaDefs}
-          formValues={formValues}
+          formValues={safeFormValues}
         />
       );
 

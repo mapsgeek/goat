@@ -622,6 +622,54 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
     default_output_name: str = "Tool Output"
     tool_type: str | None = None  # e.g., "catchment_area", "buffer", "join"
 
+    @staticmethod
+    def unique_column_name(
+        columns: dict[str, str],
+        name: str,
+    ) -> str:
+        """Return *name* if it doesn't exist in *columns*, otherwise append _1, _2, etc.
+
+        Matches DuckDB's auto-rename behaviour for duplicate column names.
+        """
+        if name not in columns:
+            return name
+        suffix = 1
+        while f"{name}_{suffix}" in columns:
+            suffix += 1
+        return f"{name}_{suffix}"
+
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Predict output columns based on input schemas and parameters.
+
+        This method enables field selectors in workflow UIs to show available
+        fields from upstream tool nodes BEFORE execution.
+
+        Default behavior: pass through all input columns unchanged.
+        Subclasses should override to define tool-specific output columns.
+
+        Args:
+            input_schemas: Dict mapping input name -> column schema
+                e.g., {"input_layer_id": {"id": "INTEGER", "name": "VARCHAR", "geometry": "GEOMETRY"}}
+            params: Tool configuration parameters
+
+        Returns:
+            Dict mapping output column name -> DuckDB type string
+        """
+        # Default: pass through all columns from first/primary input
+        primary_input = (
+            input_schemas.get("input_layer_id")
+            or input_schemas.get("layer_id")
+            or input_schemas.get("source_layer_id")
+            or input_schemas.get("target_layer_id")
+            or next(iter(input_schemas.values()), {})
+        )
+        return dict(primary_input)
+
     def get_tool_type(self: Self) -> str | None:
         """Return the tool type for this runner.
 
@@ -948,6 +996,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
             attribute_mapping = (
                 layer_info.get("attribute_mapping", {}) if layer_info else {}
             )
+            if not isinstance(attribute_mapping, dict):
+                attribute_mapping = {}
 
             # Get scenario features from PostgreSQL
             scenario_features = _get_or_create_event_loop().run_until_complete(
@@ -1027,7 +1077,11 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
         for feat in scenario_features:
             edit_type = feat.get("edit_type")
             if edit_type in ("m", "d"):  # modified or deleted
-                modified_deleted_ids.append(feat["id"])
+                # feature_id is stored as TEXT; convert to int for DuckLake's INTEGER id column
+                try:
+                    modified_deleted_ids.append(int(feat["id"]))
+                except (ValueError, TypeError):
+                    pass  # skip non-integer feature_ids (e.g. old UUID values)
             if edit_type in ("n", "m"):  # new or modified
                 new_modified_features.append(feat)
 
@@ -1070,8 +1124,8 @@ class BaseToolRunner(SimpleToolRunner, ABC, Generic[TParams]):
                 if col_name == "id":
                     row_values.append("?")
                     value_params.append(feat.get("id"))
-                elif col_name == "geometry":
-                    # Convert WKT to geometry
+                elif "GEOMETRY" in col_type.upper():
+                    # Convert WKT to geometry (column may be named "geometry" or "geom")
                     row_values.append("ST_GeomFromText(?)")
                     value_params.append(feat.get("geom"))
                 elif col_name in reverse_mapping:

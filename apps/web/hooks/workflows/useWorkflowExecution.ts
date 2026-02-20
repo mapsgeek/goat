@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useDispatch, useSelector } from "react-redux";
 import { toast } from "react-toastify";
 
-import { useJobs } from "@/lib/api/processes";
+import { dismissJob, useJobs } from "@/lib/api/processes";
 import {
   type WorkflowExecuteRequest,
   cleanupWorkflowTemp,
@@ -14,7 +14,7 @@ import {
 } from "@/lib/api/workflows";
 import type { AppDispatch } from "@/lib/store";
 import { setRunningJobIds } from "@/lib/store/jobs/slice";
-import { selectEdges, selectNodes } from "@/lib/store/workflow/selectors";
+import { selectEdges, selectNodes, selectVariables } from "@/lib/store/workflow/selectors";
 
 import { useAppSelector } from "@/hooks/store/ContextHooks";
 
@@ -39,6 +39,8 @@ interface WorkflowExecutionState {
   nodeExecutionInfo: Record<string, NodeExecutionInfo>;
   /** Temp layer IDs by node ID (for displaying results) */
   tempLayerIds: Record<string, string>;
+  /** Exported (permanent) layer IDs by export node ID */
+  exportedLayerIds: Record<string, string>;
 }
 
 /**
@@ -75,11 +77,18 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
   // Redux state
   const nodes = useSelector(selectNodes);
   const edges = useSelector(selectEdges);
+  const variables = useSelector(selectVariables);
   const runningJobIds = useAppSelector((state) => state.jobs.runningJobIds);
 
   // Keep ref to runningJobIds to avoid dependency issues
   const runningJobIdsRef = useRef(runningJobIds);
   runningJobIdsRef.current = runningJobIds;
+
+  // Track which job IDs have been processed to prevent duplicate toast messages
+  const processedJobIdsRef = useRef<Set<string>>(new Set());
+
+  // Track whether we've already attempted to reconnect to a running job
+  const reconnectedRef = useRef<string | null>(null);
 
   // Jobs polling
   const { jobs, mutate: mutateJobs } = useJobs({ read: false });
@@ -92,7 +101,98 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
     nodeStatuses: {},
     nodeExecutionInfo: {},
     tempLayerIds: {},
+    exportedLayerIds: {},
   });
+
+  /**
+   * Reconnect to a running workflow job on mount/navigation.
+   * After refresh or switching workflows, the local state is empty but there may be
+   * an active (running/accepted) workflow_runner job for this workflow on the server.
+   * This effect detects that and restores the execution state so that the UI shows
+   * the correct running animation, node statuses, and disables the Run button.
+   */
+  useEffect(() => {
+    // Only attempt reconnection if we're not already executing and have a workflowId
+    if (state.isExecuting || !workflowId || !jobs?.jobs) return;
+
+    // Don't reconnect to the same workflow twice (prevents loops)
+    if (reconnectedRef.current === workflowId) return;
+
+    // Find an active workflow_runner job for this specific workflow
+    const activeJob = jobs.jobs.find(
+      (j) =>
+        j.processID === "workflow_runner" &&
+        (j.status === "running" || j.status === "accepted") &&
+        (j.inputs as Record<string, unknown>)?.workflow_id === workflowId
+    );
+
+    if (!activeJob) return;
+
+    reconnectedRef.current = workflowId;
+
+    // Initialize node statuses from the job's node_status if available
+    const initialStatuses: Record<string, NodeExecutionStatus> = {};
+    const initialExecutionInfo: Record<string, NodeExecutionInfo> = {};
+    const initialTempLayerIds: Record<string, string> = {};
+
+    // First, set all tool/export nodes to pending
+    nodes.forEach((node) => {
+      if (node.data?.type === "tool" || node.data?.type === "export") {
+        initialStatuses[node.id] = "pending";
+        initialExecutionInfo[node.id] = { status: "pending" };
+      }
+    });
+
+    // Then overlay with actual status from the job
+    if (activeJob.node_status) {
+      Object.entries(activeJob.node_status).forEach(([nodeId, statusData]) => {
+        if (initialStatuses[nodeId] !== undefined) {
+          if (typeof statusData === "string") {
+            initialStatuses[nodeId] = statusData as NodeExecutionStatus;
+            initialExecutionInfo[nodeId] = { status: statusData as NodeExecutionStatus };
+          } else {
+            initialStatuses[nodeId] = statusData.status;
+            initialExecutionInfo[nodeId] = {
+              status: statusData.status,
+              startedAt: statusData.started_at,
+              durationMs: statusData.duration_ms,
+            };
+            if (statusData.temp_layer_id) {
+              initialTempLayerIds[nodeId] = statusData.temp_layer_id;
+            }
+          }
+        }
+      });
+    } else if (activeJob.workflow_as_code_status) {
+      const { running = [], completed = [] } = activeJob.workflow_as_code_status;
+      const extractNodeId = (taskName: string): string => {
+        return taskName.replace("run_tool_", "").replace(/_/g, "-");
+      };
+      running.forEach((taskName: string) => {
+        const nodeId = extractNodeId(taskName);
+        if (initialStatuses[nodeId]) initialStatuses[nodeId] = "running";
+      });
+      completed.forEach((taskName: string) => {
+        const nodeId = extractNodeId(taskName);
+        if (initialStatuses[nodeId]) initialStatuses[nodeId] = "completed";
+      });
+    }
+
+    setState({
+      isExecuting: true,
+      jobId: activeJob.jobID,
+      error: null,
+      nodeStatuses: initialStatuses,
+      nodeExecutionInfo: initialExecutionInfo,
+      tempLayerIds: initialTempLayerIds,
+      exportedLayerIds: {},
+    });
+
+    // Ensure the job is in the Redux running jobs list for polling
+    if (!runningJobIdsRef.current.includes(activeJob.jobID)) {
+      dispatch(setRunningJobIds([...runningJobIdsRef.current, activeJob.jobID]));
+    }
+  }, [workflowId, jobs, state.isExecuting, nodes, dispatch]);
 
   /**
    * Check if workflow can be executed
@@ -115,11 +215,14 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       return;
     }
 
+    // Clear processed job IDs for new execution
+    processedJobIdsRef.current.clear();
+
     // Initialize node statuses to pending (waiting to be executed)
     const initialStatuses: Record<string, NodeExecutionStatus> = {};
     const initialExecutionInfo: Record<string, NodeExecutionInfo> = {};
     nodes.forEach((node) => {
-      if (node.data?.type === "tool") {
+      if (node.data?.type === "tool" || node.data?.type === "export") {
         initialStatuses[node.id] = "pending";
         initialExecutionInfo[node.id] = { status: "pending" };
       }
@@ -132,6 +235,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       nodeStatuses: initialStatuses,
       nodeExecutionInfo: initialExecutionInfo,
       tempLayerIds: {},
+      exportedLayerIds: {},
     }));
 
     try {
@@ -144,12 +248,17 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
         folder_id: folderId,
         nodes: nodes,
         edges: edges,
+        ...(variables.length > 0 && {
+          variables: variables.map((v) => ({
+            name: v.name,
+            type: v.type,
+            defaultValue: v.defaultValue,
+          })),
+        }),
       };
 
       // Submit to Windmill
       const response = await executeWorkflow(workflowId, request);
-      console.log("[useWorkflowExecution] executeWorkflow response:", response);
-
       setState((s) => ({ ...s, jobId: response.job_id }));
 
       // Add to running jobs for polling (use ref to avoid stale closure)
@@ -158,7 +267,8 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       // Trigger immediate fetch
       mutateJobs();
 
-      toast.info(t("workflow_started"));
+      toast.dismiss();
+      toast.success(t("workflow_started"));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Execution failed";
       setState((s) => ({
@@ -167,9 +277,10 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
         error: message,
         nodeStatuses: {},
       }));
+      toast.dismiss();
       toast.error(`${t("workflow_failed")}: ${message}`);
     }
-  }, [projectId, workflowId, folderId, nodes, edges, dispatch, mutateJobs, t]);
+  }, [projectId, workflowId, folderId, nodes, edges, variables, dispatch, mutateJobs, t]);
 
   /**
    * Finalize a node's temp layer to permanent storage
@@ -208,11 +319,9 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
    * Watch job status and update node statuses
    */
   useEffect(() => {
-    console.log("[useWorkflowExecution] useEffect - jobId:", state.jobId, "jobs:", jobs?.jobs?.length);
     if (!state.jobId || !jobs?.jobs) return;
 
     const job = jobs.jobs.find((j) => j.jobID === state.jobId);
-    console.log("[useWorkflowExecution] Looking for job:", state.jobId, "Found:", !!job, job?.status);
     if (!job) return;
 
     // When job is running, show first pending node as running
@@ -222,8 +331,9 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
         setState((prev) => {
           const newStatuses = { ...prev.nodeStatuses };
           const newExecutionInfo = { ...prev.nodeExecutionInfo };
+          const newTempLayerIds = { ...prev.tempLayerIds };
 
-          // Copy node statuses and execution info from job
+          // Copy node statuses, execution info, and temp layer IDs from job
           Object.entries(job.node_status!).forEach(([nodeId, statusData]) => {
             if (newStatuses[nodeId] !== undefined) {
               // Handle both old format (string) and new format (object with status/timing)
@@ -237,11 +347,20 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
                   startedAt: statusData.started_at,
                   durationMs: statusData.duration_ms,
                 };
+                // Extract temp_layer_id for completed nodes
+                if (statusData.temp_layer_id) {
+                  newTempLayerIds[nodeId] = statusData.temp_layer_id;
+                }
               }
             }
           });
 
-          return { ...prev, nodeStatuses: newStatuses, nodeExecutionInfo: newExecutionInfo };
+          return {
+            ...prev,
+            nodeStatuses: newStatuses,
+            nodeExecutionInfo: newExecutionInfo,
+            tempLayerIds: newTempLayerIds,
+          };
         });
       } else if (job.workflow_as_code_status) {
         // Fallback: use workflow_as_code_status if available
@@ -299,23 +418,30 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       }
     }
 
-    // Check for completion
+    // Check for completion - but only process each job once
     if (job.status === "successful") {
-      // Extract results from job output
-      console.log("[useWorkflowExecution] Job completed, result:", job.result);
+      // Skip if we've already processed this job completion
+      if (processedJobIdsRef.current.has(job.jobID)) {
+
+        return;
+      }
+      processedJobIdsRef.current.add(job.jobID);
+
       const results = job.result?.node_results as Record<string, NodeResult> | undefined;
       const tempLayerIds: Record<string, string> = {};
-
-      console.log("[useWorkflowExecution] node_results:", results);
+      const exportedLayerIds: Record<string, string> = {};
 
       // Build execution info with timing from node_results
       const finalExecutionInfo: Record<string, NodeExecutionInfo> = {};
 
       if (results) {
         Object.entries(results).forEach(([nodeId, result]) => {
-          console.log(`[useWorkflowExecution] Node ${nodeId} result:`, result);
           if (result.temp_layer_id) {
             tempLayerIds[nodeId] = result.temp_layer_id;
+          }
+          // Export nodes return layer_id (permanent) instead of temp_layer_id
+          if (result.layer_id) {
+            exportedLayerIds[nodeId] = result.layer_id;
           }
           // Extract timing info from each node result
           finalExecutionInfo[nodeId] = {
@@ -325,13 +451,12 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
         });
       }
 
-      console.log("[useWorkflowExecution] Extracted tempLayerIds:", tempLayerIds);
-      console.log("[useWorkflowExecution] Extracted executionInfo:", finalExecutionInfo);
-
       setState((s) => ({
         ...s,
         isExecuting: false,
+        jobId: null, // Clear jobId to prevent re-triggering on subsequent job list updates
         tempLayerIds,
+        exportedLayerIds,
         nodeStatuses: Object.fromEntries(
           Object.entries(s.nodeStatuses).map(([id, _status]) => [id, "completed"])
         ),
@@ -342,17 +467,56 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       // Remove from running jobs - use ref to get current value
       dispatch(setRunningJobIds(runningJobIdsRef.current.filter((id) => id !== state.jobId)));
 
+      // Allow reconnection if the same workflow is run again
+      reconnectedRef.current = null;
+
+      toast.dismiss();
       toast.success(t("workflow_completed"));
     } else if (job.status === "failed") {
-      setState((s) => ({
-        ...s,
-        isExecuting: false,
-        error: job.message || "Workflow failed",
-      }));
+      // Skip if we've already processed this job failure
+      if (processedJobIdsRef.current.has(job.jobID)) {
+
+        return;
+      }
+      processedJobIdsRef.current.add(job.jobID);
+
+      setState((s) => {
+        // Update node statuses: mark running nodes as failed, keep completed ones as completed
+        const newStatuses = { ...s.nodeStatuses };
+        const newTempLayerIds = { ...s.tempLayerIds };
+
+        Object.entries(newStatuses).forEach(([nodeId, status]) => {
+          if (status === "running" || status === "pending") {
+            newStatuses[nodeId] = "failed";
+          }
+        });
+
+        // Extract temp_layer_ids from node_status for completed nodes (so we can view their data)
+        if (job.node_status) {
+          Object.entries(job.node_status).forEach(([nodeId, statusData]) => {
+            if (typeof statusData !== "string" && statusData.temp_layer_id) {
+              newTempLayerIds[nodeId] = statusData.temp_layer_id;
+            }
+          });
+        }
+
+        return {
+          ...s,
+          isExecuting: false,
+          jobId: null, // Clear jobId to prevent re-triggering on subsequent job list updates
+          error: job.message || "Workflow failed",
+          nodeStatuses: newStatuses,
+          tempLayerIds: newTempLayerIds,
+        };
+      });
 
       // Remove from running jobs
       dispatch(setRunningJobIds(runningJobIdsRef.current.filter((id) => id !== state.jobId)));
 
+      // Allow reconnection if the same workflow is run again
+      reconnectedRef.current = null;
+
+      toast.dismiss();
       toast.error(`${t("workflow_failed")}: ${job.message || "Unknown error"}`);
     }
     // Note: Intentionally excluding runningJobIds from deps to avoid infinite loop
@@ -361,13 +525,55 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
   }, [jobs, state.jobId, dispatch, t]);
 
   // Note: No manual polling interval needed here.
+  // Export nodes are finalized server-side by the workflow_runner.
   // The useJobs hook already has built-in SWR refreshInterval
   // that polls every 2 seconds when there are active jobs.
+
+  /**
+   * Cancel/stop the running workflow
+   */
+  const cancel = useCallback(async () => {
+    if (!state.jobId) return;
+
+    try {
+      await dismissJob(state.jobId);
+
+      // Update state to show cancelled
+      setState((s) => {
+        const newStatuses = { ...s.nodeStatuses };
+        Object.entries(newStatuses).forEach(([nodeId, status]) => {
+          if (status === "running" || status === "pending") {
+            newStatuses[nodeId] = "failed";
+          }
+        });
+
+        return {
+          ...s,
+          isExecuting: false,
+          error: "Workflow cancelled",
+          nodeStatuses: newStatuses,
+        };
+      });
+
+      // Remove from running jobs
+      dispatch(setRunningJobIds(runningJobIdsRef.current.filter((id) => id !== state.jobId)));
+
+      // Allow reconnection if the same workflow is run again
+      reconnectedRef.current = null;
+
+      toast.dismiss();
+      toast.warning(t("workflow_cancelled"));
+    } catch (error) {
+      console.error("Failed to cancel workflow:", error);
+      toast.error(t("workflow_cancel_failed"));
+    }
+  }, [state.jobId, dispatch, t]);
 
   /**
    * Reset execution state
    */
   const reset = useCallback(() => {
+    reconnectedRef.current = null;
     setState({
       isExecuting: false,
       jobId: null,
@@ -375,6 +581,7 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
       nodeStatuses: {},
       nodeExecutionInfo: {},
       tempLayerIds: {},
+      exportedLayerIds: {},
     });
   }, []);
 
@@ -386,9 +593,11 @@ export function useWorkflowExecution({ workflow, projectId, folderId }: UseWorkf
     nodeStatuses: state.nodeStatuses,
     nodeExecutionInfo: state.nodeExecutionInfo,
     tempLayerIds: state.tempLayerIds,
+    exportedLayerIds: state.exportedLayerIds,
 
     // Actions
     execute,
+    cancel,
     finalizeNode,
     reset,
     canExecute,

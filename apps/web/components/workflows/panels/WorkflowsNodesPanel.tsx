@@ -14,8 +14,6 @@ import {
   Divider,
   Grid,
   IconButton,
-  MenuItem,
-  Select,
   Stack,
   Tooltip,
   Typography,
@@ -24,16 +22,18 @@ import {
 import { styled } from "@mui/material/styles";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
 import { type JobStatusType, dismissJob, useJobs } from "@/lib/api/processes";
 import type { AppDispatch } from "@/lib/store";
+import { selectNodes } from "@/lib/store/workflow/selectors";
 import { selectNode } from "@/lib/store/workflow/slice";
 import type { ProjectLayer } from "@/lib/validations/project";
-import type { WorkflowConfig } from "@/lib/validations/workflow";
+import type { WorkflowConfig, WorkflowNode } from "@/lib/validations/workflow";
 
+import type { SelectorItem } from "@/types/map/common";
 import type { ToolCategory } from "@/types/map/ogc-processes";
 
 import { useCategorizedProcesses } from "@/hooks/map/useOgcProcesses";
@@ -46,6 +46,7 @@ import {
   SidePanelTabs,
 } from "@/components/common/SidePanel";
 import JobProgressItem from "@/components/jobs/JobProgressItem";
+import Selector from "@/components/map/panels/common/Selector";
 import WorkflowNodeSettings from "@/components/workflows/panels/WorkflowNodeSettings";
 
 const RightPanelContainer = styled(SidePanelContainer)(({ theme }) => ({
@@ -207,11 +208,21 @@ const ToolsTabContent: React.FC<ToolsTabContentProps> = ({ onDragStart }) => {
     onDragStart(event, "dataset");
   };
 
+  // Handle drag start for Export Dataset node
+  const handleExportDragStart = (event: React.DragEvent) => {
+    onDragStart(event, "export");
+  };
+
+  // Handle drag start for Custom SQL node (creates a tool node with processId "custom_sql")
+  const handleCustomSqlDragStart = (event: React.DragEvent) => {
+    onDragStart(event, "tool", "custom_sql");
+  };
+
   return (
     <Stack spacing={4} sx={{ p: 3 }}>
-      {/* Data Input Section - single Add Dataset node */}
+      {/* Data I/O Section - Dataset input and Export output */}
       <Box sx={{ mb: 4 }}>
-        <SettingsGroupHeader label={t("data_input")} />
+        <SettingsGroupHeader label={t("data_io")} />
         <Grid container spacing={4}>
           <Grid item xs={6}>
             <Card
@@ -235,6 +246,60 @@ const ToolsTabContent: React.FC<ToolsTabContentProps> = ({ onDragStart }) => {
                 title={
                   <Typography variant="body2" fontWeight="bold" noWrap color="inherit">
                     {t("add_dataset")}
+                  </Typography>
+                }
+              />
+            </Card>
+          </Grid>
+          <Grid item xs={6}>
+            <Card
+              draggable
+              onDragStart={handleExportDragStart}
+              sx={{
+                cursor: "grab",
+                maxWidth: "130px",
+                borderRadius: "6px",
+                "&:active": { cursor: "grabbing" },
+              }}>
+              <CardHeader
+                sx={{
+                  px: 2,
+                  py: 4,
+                  ".MuiCardHeader-content": {
+                    width: "100%",
+                    color: theme.palette.text.secondary,
+                  },
+                }}
+                title={
+                  <Typography variant="body2" fontWeight="bold" noWrap color="inherit">
+                    {t("export_dataset")}
+                  </Typography>
+                }
+              />
+            </Card>
+          </Grid>
+          <Grid item xs={6}>
+            <Card
+              draggable
+              onDragStart={handleCustomSqlDragStart}
+              sx={{
+                cursor: "grab",
+                maxWidth: "130px",
+                borderRadius: "6px",
+                "&:active": { cursor: "grabbing" },
+              }}>
+              <CardHeader
+                sx={{
+                  px: 2,
+                  py: 4,
+                  ".MuiCardHeader-content": {
+                    width: "100%",
+                    color: theme.palette.text.secondary,
+                  },
+                }}
+                title={
+                  <Typography variant="body2" fontWeight="bold" noWrap color="inherit">
+                    {t("custom_sql")}
                   </Typography>
                 }
               />
@@ -370,23 +435,24 @@ const HistoryTabContent: React.FC<HistoryTabContentProps> = ({ workflowId }) => 
     );
   }
 
+  const statusFilterItems: SelectorItem[] = [
+    { value: "all", label: t("all_states") },
+    { value: "successful", label: t("successful") },
+    { value: "failed", label: t("failed") },
+    { value: "running", label: t("running") },
+    { value: "accepted", label: t("pending") },
+    { value: "dismissed", label: t("cancelled") },
+  ];
+
   return (
     <Box>
       {/* Status filter dropdown */}
       <Box sx={{ px: 2, pt: 2, pb: 1 }}>
-        <Select
-          size="small"
-          fullWidth
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-          sx={{ bgcolor: theme.palette.background.paper }}>
-          <MenuItem value="all">{t("all_states")}</MenuItem>
-          <MenuItem value="successful">{t("successful")}</MenuItem>
-          <MenuItem value="failed">{t("failed")}</MenuItem>
-          <MenuItem value="running">{t("running")}</MenuItem>
-          <MenuItem value="accepted">{t("pending")}</MenuItem>
-          <MenuItem value="dismissed">{t("cancelled")}</MenuItem>
-        </Select>
+        <Selector
+          selectedItems={statusFilterItems.find((item) => item.value === statusFilter)}
+          setSelectedItems={(item) => setStatusFilter((item as SelectorItem)?.value as StatusFilter)}
+          items={statusFilterItems}
+        />
       </Box>
 
       {workflowJobs.length === 0 ? (
@@ -509,7 +575,7 @@ interface WorkflowsNodesPanelProps {
 }
 
 const WorkflowsNodesPanel: React.FC<WorkflowsNodesPanelProps> = ({
-  config,
+  config: _config,
   selectedNodeId,
   projectLayers = [],
   workflowId,
@@ -517,6 +583,7 @@ const WorkflowsNodesPanel: React.FC<WorkflowsNodesPanelProps> = ({
 }) => {
   const { t } = useTranslation("common");
   const dispatch = useDispatch<AppDispatch>();
+  const nodes = useSelector(selectNodes);
   const [activeTab, setActiveTab] = useState(0);
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
@@ -530,12 +597,13 @@ const WorkflowsNodesPanel: React.FC<WorkflowsNodesPanelProps> = ({
 
   // If a node is selected, show the node settings panel (like LayerSettingsPanel in Layouts)
   // Note: textAnnotation nodes don't show settings panel - they have their own floating toolbar
-  if (selectedNodeId && config) {
-    const selectedNode = config.nodes.find((n) => n.id === selectedNodeId);
+  // Use Redux nodes (source of truth) instead of stale workflow config to prevent config resets
+  if (selectedNodeId) {
+    const selectedNode = nodes.find((n) => n.id === selectedNodeId);
     if (selectedNode && selectedNode.type !== "textAnnotation") {
       return (
         <RightPanelContainer>
-          <WorkflowNodeSettings node={selectedNode} projectLayers={projectLayers} onBack={handleBack} />
+          <WorkflowNodeSettings key={selectedNodeId} node={selectedNode as WorkflowNode} projectLayers={projectLayers} onBack={handleBack} />
         </RightPanelContainer>
       );
     }

@@ -87,6 +87,25 @@ class HeatmapClosestAverageToolRunner(BaseToolRunner[HeatmapClosestAverageToolPa
     output_geometry_type = "polygon"  # H3 cells
     default_output_name = get_default_layer_name("heatmap_closest_average", "en")
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Predict heatmap closest average output schema.
+
+        Heatmap closest average outputs:
+        - h3_index: H3 cell index
+        - total_accessibility: average travel cost to N closest destinations
+        - geometry: H3 cell polygon
+        """
+        return {
+            "h3_index": "VARCHAR",
+            "total_accessibility": "DOUBLE",
+            "geometry": "GEOMETRY",
+        }
+
     def get_layer_properties(
         self: Self,
         params: HeatmapClosestAverageToolParams,

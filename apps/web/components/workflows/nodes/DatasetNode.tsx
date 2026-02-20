@@ -6,7 +6,7 @@ import {
   ContentCopy as DuplicateIcon,
   FilterAlt as FilterIcon,
 } from "@mui/icons-material";
-import { Box, Divider, IconButton, Stack, Tooltip, Typography } from "@mui/material";
+import { Box, IconButton, Stack, Tooltip, Typography } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { Handle, type NodeProps, NodeToolbar, Position } from "@xyflow/react";
 import React, { memo, useCallback, useMemo } from "react";
@@ -27,6 +27,7 @@ import type { DatasetNodeData } from "@/lib/validations/workflow";
 import useLayerFields from "@/hooks/map/CommonHooks";
 
 import { useWorkflowExecutionContext } from "../context/WorkflowExecutionContext";
+import { NodeParamsSection } from "./shared";
 
 const NodeContainer = styled(Box, {
   shouldForwardProp: (prop) => prop !== "selected",
@@ -134,9 +135,8 @@ const DatasetNode: React.FC<DatasetNodeProps> = ({ id, data, selected }) => {
   const dispatch = useDispatch<AppDispatch>();
   const nodes = useSelector(selectNodes);
 
-  // Get execution status - dataset nodes are "completed" when any connected tool is running or completed
-  const { nodeStatuses } = useWorkflowExecutionContext();
-  const hasAnyExecution = Object.keys(nodeStatuses).length > 0;
+  // Get execution status - dataset nodes are "completed" when any execution is active
+  const { isExecuting: hasAnyExecution } = useWorkflowExecutionContext();
 
   // Get layer fields for CQL generation
   const { layerFields } = useLayerFields(data.layerId || "", undefined);
@@ -262,19 +262,18 @@ const DatasetNode: React.FC<DatasetNodeProps> = ({ id, data, selected }) => {
               </IconStatusBadge>
             )}
           </NodeIconWrapper>
-          <Typography variant="body2" fontWeight="bold" sx={{ wordBreak: "break-word" }}>
+          <Typography variant="caption" fontWeight={700} sx={{ wordBreak: "break-word" }}>
             {data.layerId ? data.label : t("no_dataset")}
           </Typography>
         </NodeHeader>
 
         {/* Feature info - only show when layer is selected */}
         {data.layerId && collectionData && (
-          <>
-            <Divider sx={{ my: 1 }} />
+          <NodeParamsSection>
             <Stack spacing={0.5}>
               <InfoRow>
-                <Typography variant="caption" color="text.secondary">
-                  {t("features")}
+                <Typography variant="caption" color="text.secondary" fontWeight="bold" sx={{ fontSize: 11 }}>
+                  {t("features")}:
                 </Typography>
                 <Stack direction="row" alignItems="center" spacing={0.5}>
                   {hasFilter && (
@@ -282,13 +281,13 @@ const DatasetNode: React.FC<DatasetNodeProps> = ({ id, data, selected }) => {
                       <FilterIcon sx={{ fontSize: 12, color: "primary.main" }} />
                     </Tooltip>
                   )}
-                  <Typography variant="caption" fontWeight="bold">
+                  <Typography variant="caption" sx={{ fontSize: 11 }}>
                     {formatCount(collectionData.numberMatched)}
                   </Typography>
                 </Stack>
               </InfoRow>
             </Stack>
-          </>
+          </NodeParamsSection>
         )}
       </NodeContainer>
     </>

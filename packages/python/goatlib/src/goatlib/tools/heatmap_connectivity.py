@@ -104,6 +104,25 @@ class HeatmapConnectivityToolRunner(BaseToolRunner[HeatmapConnectivityToolParams
     output_geometry_type = "polygon"  # H3 cells
     default_output_name = get_default_layer_name("heatmap_connectivity", "en")
 
+    @classmethod
+    def predict_output_schema(
+        cls,
+        input_schemas: dict[str, dict[str, str]],
+        params: dict[str, Any],
+    ) -> dict[str, str]:
+        """Predict heatmap connectivity output schema.
+
+        Heatmap connectivity outputs:
+        - h3_index: H3 cell index
+        - accessibility: total area reachable within max travel cost
+        - geometry: H3 cell polygon
+        """
+        return {
+            "h3_index": "VARCHAR",
+            "accessibility": "DOUBLE",
+            "geometry": "GEOMETRY",
+        }
+
     def get_layer_properties(
         self: Self,
         params: HeatmapConnectivityToolParams,

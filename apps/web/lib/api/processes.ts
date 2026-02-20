@@ -118,6 +118,7 @@ export interface Job {
         status: "pending" | "running" | "completed" | "failed";
         started_at?: number; // Unix timestamp in seconds
         duration_ms?: number; // Duration in milliseconds
+        temp_layer_id?: string; // Temp layer ID for completed nodes
       }
   >;
 }

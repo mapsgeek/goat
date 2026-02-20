@@ -569,9 +569,7 @@ class WindmillClient:
             logger.warning(f"Failed to get flow user state for {job_id}/{key}: {e}")
             return None
 
-    async def _get_child_jobs_status(
-        self, parent_job_id: str
-    ) -> dict[str, Any] | None:
+    async def _get_child_jobs_status(self, parent_job_id: str) -> dict[str, Any] | None:
         """Get status of child jobs spawned by a workflow_runner job.
 
         Queries Windmill for jobs with parent_job={parent_job_id} and builds
@@ -616,7 +614,13 @@ class WindmillClient:
                     # Get full job details including args
                     full_job = await self.get_job_status(job_id)
                     args = full_job.get("args", {})
-                    node_id = args.get("node_id") if args else None
+                    # For finalize_layer child jobs, use export_node_id
+                    # so status maps to the export node, not the source tool
+                    node_id = (
+                        args.get("export_node_id") or args.get("node_id")
+                        if args
+                        else None
+                    )
 
                     if not node_id:
                         return
@@ -651,6 +655,18 @@ class WindmillClient:
                     # Add duration for completed jobs
                     if status == "completed" and full_job.get("duration_ms"):
                         status_obj["duration_ms"] = full_job.get("duration_ms")
+
+                    # Add temp_layer_id for completed tool jobs (from job result)
+                    if status == "completed" and full_job.get("result"):
+                        result = full_job.get("result")
+                        if isinstance(result, dict):
+                            if result.get("temp_layer_id"):
+                                status_obj["temp_layer_id"] = result.get(
+                                    "temp_layer_id"
+                                )
+                            # Add layer_id for completed export/finalize jobs
+                            if result.get("layer_id"):
+                                status_obj["layer_id"] = result.get("layer_id")
 
                     node_status[node_id] = status_obj
 
