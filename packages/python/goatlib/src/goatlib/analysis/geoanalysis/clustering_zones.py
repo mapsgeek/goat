@@ -577,7 +577,7 @@ class ClusteringZones(AnalysisTool):
                 SELECT
                     individual_id,
                     AVG(POWER((zone_size - {target_size}) / {target_size}, 2))
-                    + 0.1*POWER((MIN(zone_size) - {target_size}) / {target_size}, 2)
+                    + 0.2*POWER((MIN(zone_size) - {target_size}) / {target_size}, 2)
                           AS size_score
                 FROM zone_stats
                 GROUP BY individual_id
@@ -614,7 +614,7 @@ class ClusteringZones(AnalysisTool):
             size_fitness AS (
                 SELECT individual_id,
                     AVG(POWER((zone_size - {target_size}) / {target_size}, 2))
-                      + 0.1*POWER((MIN(zone_size) - {target_size}) / {target_size}, 2)
+                      + 0.2*POWER((MIN(zone_size) - {target_size}) / {target_size}, 2)
                       AS size_score
                 FROM zone_stats
                 GROUP BY individual_id
@@ -842,7 +842,7 @@ class ClusteringZones(AnalysisTool):
             # find candidates, rank by zone size + compactness, resolve conflicts
             self.con.execute("TRUNCATE batch_assignments")
             if use_compactness:
-                # Compactness-aware zone growing: rank by size, then by distance to zone centroid
+                # Compactness-aware zone growing: rank by size, then by distance to zone centroid. do not allow growth more then 120%
                 self.con.execute(f"""
                     INSERT INTO batch_assignments
                     WITH frontier_candidates AS (
@@ -857,6 +857,7 @@ class ClusteringZones(AnalysisTool):
                         JOIN zone_sizes zs ON f.individual_id = zs.individual_id 
                                            AND f.cluster_id = zs.cluster_id
                         WHERE f.cluster_id >= 0 AND g.cluster_id = -1
+                          AND zs.size < {target_size} * 1.2
                     ),
                     with_compactness AS (
                         SELECT 
@@ -871,11 +872,11 @@ class ClusteringZones(AnalysisTool):
                             individual_id, cluster_id, candidate_pt, zone_size, rand, dist_to_centroid,
                             ROW_NUMBER() OVER (
                                 PARTITION BY individual_id, cluster_id 
-                                ORDER BY dist_to_centroid, zone_size, rand
+                                ORDER BY zone_size, dist_to_centroid, rand
                             ) AS zone_rank,
                             ROW_NUMBER() OVER (
                                 PARTITION BY individual_id, candidate_pt 
-                                ORDER BY dist_to_centroid, zone_size, rand
+                                ORDER BY  zone_size, dist_to_centroid, rand
                             ) AS conflict_rank
                         FROM with_compactness
                     )
@@ -898,6 +899,7 @@ class ClusteringZones(AnalysisTool):
                         JOIN zone_sizes zs ON f.individual_id = zs.individual_id 
                                            AND f.cluster_id = zs.cluster_id
                         WHERE f.cluster_id >= 0 AND g.cluster_id = -1
+                          AND zs.size < {target_size} * 1.2
                     ),
                     ranked AS (
                         SELECT 
