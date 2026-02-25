@@ -849,7 +849,7 @@
     },
     "huff_model": {
       "title": "Huff-Modell",
-      "description": "Das Huff-Modell prognostiziert die Wahrscheinlichkeit, dass Verbraucher in einem Referenzgebiet bestimmte Standorte besuchen, basierend auf der Attraktivität der Standorte und der Entfernung zu diesen Standorten."
+      "description": "Das Huff-Modell prognostiziert die Wahrscheinlichkeit, dass Verbraucher in einem Referenzgebiet bestimmte Standorte besuchen, basierend auf der Attraktivität der Standorte und der Entfernung zu diesen Standorten, einschließlich der Konkurrenz zwischen den Gelegenheiten."
     },
     "oev_gueteklassen": {
       "title": "ÖV-Güteklassen",
