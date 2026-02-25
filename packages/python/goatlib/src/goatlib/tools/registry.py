@@ -268,14 +268,14 @@ TOOL_REGISTRY: tuple[ToolDefinition, ...] = (
         ),
     ),
     ToolDefinition(
-        name="clustering_zones",
+        name="spatial_clustering",
         display_name="Zone Clustering",
         description="Create spatially contiguous clusters with balanced feature counts using genetic algorithm",
-        module_path="goatlib.tools.clustering_zones",
+        module_path="goatlib.tools.spatial_clustering",
         params_class_name="ClusteringZonesToolParams",
-        windmill_path="f/goat/tools/clustering_zones",
+        windmill_path="f/goat/tools/spatial_clustering",
         category="geoanalysis",
-        docs_path="/toolbox/geoanalysis/clustering_zones",
+        docs_path="/toolbox/geoanalysis/spatial_clustering",
         keywords=(
             "geoanalysis",
             "clustering",

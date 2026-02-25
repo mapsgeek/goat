@@ -92,11 +92,11 @@ class ClusteringZones(AnalysisTool):
         k = params.nb_cluster
         use_compactness=params.use_compactness
         if use_compactness:
-            threshold_distance = params.max_distance
+            max_distance = params.max_distance
             self.compactness_weight = params.compactness_weight
         else:
             self.compactness_weight = 0.0
-            threshold_distance = None
+            max_distance = None
 
         # Determine weight expression: use numeric field if specified, otherwise 1 per point
         has_field_weights = params.size_method == "field" and params.size_field
@@ -162,7 +162,7 @@ class ClusteringZones(AnalysisTool):
 
             for gen in range(self.n_generations + 1):
                 # Calculate fitness for current population and track best solution
-                fitness_dict = self._calculate_fitness_batch(population_ids, k, n_weighted_points,use_compactness, threshold_distance)
+                fitness_dict = self._calculate_fitness_batch(population_ids, k, n_weighted_points,use_compactness, max_distance)
                 fitness_scores = [fitness_dict.get(i, {}).get('total', float("inf")) for i in population_ids]
                 gen_best_fitness = ( min(fitness_scores) if fitness_scores else float("inf") )
                 improvement_threshold = 1e-6
@@ -587,7 +587,7 @@ class ClusteringZones(AnalysisTool):
         k: int,
         n_weighted_points: int,
         use_compactness: bool,
-        threshold_distance: float ,
+        max_distance: float ,
     ) -> dict[int, dict]:
         """
         Calculate fitness scores.
@@ -636,7 +636,7 @@ class ClusteringZones(AnalysisTool):
             ),
             compactness_per_zone AS (
                 SELECT individual_id, cluster_id,
-                    case when SQRT(dist_sq) - {threshold_distance}/2>0 then MAX(POWER((SQRT(dist_sq) - {threshold_distance}/2) / ({threshold_distance}/2), 2)) ELSE 0 END AS max_zone_length
+                    case when SQRT(dist_sq) - {max_distance}/2>0 then MAX(POWER((SQRT(dist_sq) - {max_distance}/2) / ({max_distance}/2), 2)) ELSE 0 END AS max_zone_length
                 FROM point_centroid_dist
                 GROUP BY individual_id, cluster_id,dist_sq
             ),

@@ -14,7 +14,7 @@ from typing import Any, Self
 
 from pydantic import ConfigDict, Field
 
-from goatlib.analysis.geoanalysis.clustering_zones import ClusteringZones
+from goatlib.analysis.geoanalysis.spatial_clustering import ClusteringZones
 from goatlib.analysis.schemas.clustering import ClusteringParams, SizeMethod
 from goatlib.analysis.schemas.ui import (
     SECTION_INPUT,

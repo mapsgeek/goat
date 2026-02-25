@@ -900,8 +900,8 @@
       "title": "Geokodierung",
       "description": "Wandelt Adressen in geografische Koordinaten um. Unterstützt sowohl vollständige Adresszeichenfolgen als auch strukturierte Adresskomponenten."
     },
-    "clustering_zones": {
-      "title": "Clusterbasierte Zonen",
+    "spatial_clustering": {
+      "title": "Räumliches Clustering",
       "description": "Erstellt clustrierte Zonen aus Punktobjekten. Wählen Sie die Clustermethode: schnell mit K-Means oder langsamer mit ausgewogenen Zonen."
     },
     "join": {

@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 
-from goatlib.analysis.geoanalysis.clustering_zones import (
+from goatlib.analysis.geoanalysis.spatial_clustering import (
     ClusteringZones,
 )
 from goatlib.analysis.schemas.clustering import ClusteringParams, ClusterType

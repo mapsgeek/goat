@@ -829,7 +829,7 @@
     },
     "huff_model": {
       "title": "Huff Model",
-      "description": "The Huff Model predicts the probability of consumers in a reference area visiting particular oppportunity based on the attractiveness of the locations and the distance to those locations."
+      "description": "The Huff Model predicts the probability of consumers in a reference area visiting particular locations based on the attractiveness of the locations and the distance to those locations, including competition between opportunities."
     },
     "oev_gueteklassen": {
       "title": "ÖV-Güteklassen",
@@ -880,8 +880,8 @@
       "title": "Geocoding",
       "description": "Convert addresses to geographic coordinates. Supports both full address strings and structured address components."
     },
-    "clustering_zones": {
-      "title": "Clustering Zones",
+    "spatial_clustering": {
+      "title": "Spatial Clustering",
       "description": "Creates clustered zones from point features. Choose the clustering method: fast with K-means or slower with balanced zones."
     },
     "join": {
@@ -935,7 +935,7 @@
     "join": "Join Features",
     "geocoding": "Geocoding",
     "clustered_features": "Cluster Assignment",
-    "cluster_summary_name": "Cluster Summary"
+    "cluster_summary": "Cluster Summary"
   },
   "two_sfca_type": {
     "twosfca": "2SFCA",
