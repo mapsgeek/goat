@@ -371,6 +371,7 @@
   "diverging": "Diverging",
   "divider": "Divider",
   "done": "Done",
+  "catalog_download_not_allowed": "Data from the catalog cannot be directly downloaded. Only datasets you own can be downloaded.",
   "download": "Download",
   "dpi": "DPI",
   "drag_elements_to_canvas": "Drag elements to canvas",

@@ -376,6 +376,7 @@
   "diverging": "Divergierend",
   "divider": "Teiler",
   "done": "Fertig",
+  "catalog_download_not_allowed": "Daten aus dem Katalog können nicht direkt heruntergeladen werden. Nur Datensätze, die Ihnen gehören, können heruntergeladen werden.",
   "download": "Herunterladen",
   "download_crs": "Koordinatenreferenzsystem",
   "download_started": "Download gestartet",
