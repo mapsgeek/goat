@@ -77,7 +77,12 @@ const hasExpandedLegend = (layer: ProjectLayer): boolean => {
   }
 
   // Check for color mapping
-  if (props.color_field || props.stroke_color_field || props.marker_field) {
+  if (props.color_field || props.stroke_color_field) {
+    return true;
+  }
+
+  // Check for field-based custom markers (needs expanded legend panel)
+  if (props.custom_marker === true && props.marker_field) {
     return true;
   }
 
@@ -201,6 +206,13 @@ const LayerLegendItem: React.FC<LayerLegendItemProps> = ({ layer, showLayerName 
   const hasExpanded = hasExpandedLegend(layer);
   const simpleColor = getLayerSimpleColor(layer);
 
+  // Extract single custom marker info for simple icon rendering
+  const props = layer.properties as Record<string, unknown>;
+  const customMarker = props.custom_marker === true;
+  const markerObj = customMarker ? (props.marker as Record<string, unknown> | undefined) : undefined;
+  const markerUrl = markerObj?.url as string | undefined;
+  const markerSource = (markerObj?.source as "custom" | "library") ?? "library";
+
   return (
     <Box sx={{ minWidth: 0 }}>
       {/* Layer name with simple icon for non-expanded legends */}
@@ -208,7 +220,12 @@ const LayerLegendItem: React.FC<LayerLegendItemProps> = ({ layer, showLayerName 
         <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 0.5 }}>
           {!hasExpanded && (
             <Box sx={{ flexShrink: 0 }}>
-              <LayerIcon type={geometryType} color={simpleColor} />
+              <LayerIcon
+                type={geometryType}
+                color={simpleColor}
+                iconUrl={markerUrl}
+                iconSource={markerSource}
+              />
             </Box>
           )}
           <Typography
