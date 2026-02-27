@@ -32,6 +32,10 @@ Das Werkzeug Räumliches Clustering gruppiert eine Menge räumlicher Features in
 :::info
 
 Das Werkzeug für räumliches Clustering ist derzeit **auf Punkt-Features beschränkt**. Es unterstützt maximal **4.000 Punkte**. Für größere Datensätze sollten Sie Ihre Daten vor der Ausführung des Werkzeugs filtern oder eine Stichprobe nehmen.
+
+**Hinweis zu Leistung und Determinismus:**
+- Die Methode **Ausgeglichene Zonen** verwendet einen genetischen Algorithmus, der **nicht deterministisch** ist. Verschiedene Läufe mit den gleichen Eingaben können leicht unterschiedliche Zonenkonfigurationen erzeugen.
+- Die Ausführungszeit für **Ausgeglichene Zonen** kann je nach Anzahl der Punkte und gewünschten Cluster erheblich variieren. Sie ist im Allgemeinen langsamer als K-Means und kann je nach Datensatzkomplexität zwischen **30 Sekunden und 4 Minuten** dauern.
 :::
 
 ## 2. Anwendungsfälle

@@ -32,6 +32,10 @@ The Spatial Clustering tool groups a set of spatial features into a specified nu
 :::info
 
 The Spatial Clustering tool is currently **limited to point features only**. It only supports a maximum of **4,000 points**. For larger datasets, consider pre-filtering or sampling your data before running the tool.
+
+**Note on Performance and Determinism:**
+- The **Balanced Zones** method uses a genetic algorithm which is **non-deterministic**. Different runs with the same input may produce slightly different zone configurations.
+- Execution time for **Balanced Zones** can vary significantly based on the number of points and desired clusters. It is generally slower than K-Means, taking anywhere from **30 seconds to 4 minutes** depending on dataset complexity.
 :::
 
 ## 2. Example use cases
