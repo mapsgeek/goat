@@ -33,7 +33,7 @@ You can configure the routing type, opportunity layers (with capacity fields), d
 
 
 
-**Key difference:** Unlike the Heatmaps, which visualizes accessibility per grid cell, the *Huff Model* produces a **probability per supply location** — showing what share of total demand each facility captures.
+**Key difference:** Unlike the Heatmaps, which visualize accessibility per grid cell, the *Huff Model* produces a **probability per supply location** — showing what share of total demand each facility captures.
 
 import MapViewer from '@site/src/components/MapViewer';
 
@@ -71,7 +71,7 @@ If you would like to perform analyses beyond this geofence, feel free to [contac
 
 - What share of demand does each public library capture from surrounding neighborhoods?
 
-## 3. How to use the indicator?
+## 3. How to use the tool?
 
 <div class="step">
   <div class="step-number">1</div>

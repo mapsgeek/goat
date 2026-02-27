@@ -286,7 +286,7 @@
       "description": "Aktivieren um eine maximale Entfernung zwischen Punkten in derselben Zone festzulegen"
     },
     "max_distance_threshold": {
-      "label": "Max. Entfernungsschwelle",
+      "label": "Max. Entfernung",
       "description": "Maximale Entfernung für Kompaktheitsmessung (automatisch erkannt falls nicht angegeben)"
     },
     "population_size": {

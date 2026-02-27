@@ -149,7 +149,7 @@ The K-Means algorithm works iteratively:
 The Balanced Zones method uses a **genetic algorithm** to find optimal spatial groupings:
 
 1. An initial population of solutions is created using K-Means as a starting point, plus random variations.
-2. For each solution, **extract seed** for each cluster and **grow zones** through spatial neighbors to assign all features to clusters. Features unassigned by growth are assigned to the **smallest cluster between in surrounding**. The frontiers features of large clusters can then be **reassigned** to smaller zones.
+2. For each solution, **extract seed** for each cluster and **grow zones** through spatial neighbors to assign all features to clusters. Features unassigned by growth are assigned to the **smallest surrounding cluster**. The frontier features of large clusters can then be **reassigned** to smaller zones.
 3. Each solution is scored based on a **fitness score**.
 4. The best solutions are combined and mutated across multiple generations to progressively improve the result.
 5. The algorithm stops when no further improvement is found or the maximum number of generations is reached.

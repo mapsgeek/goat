@@ -6,9 +6,9 @@ import Tabs from '@theme/Tabs';
 import TabItem from '@theme/TabItem';
 import MathJax from 'react-mathjax';
 
-# Heatmap - 2SFCA
+# Heatmap 2SFCA
 
-The Heatmap - 2SFCA (Two-Step Floating Catchment Area) indicator **produces a color-coded map visualizing spatial accessibility by combining supply capacity and demand in a single measure**.
+The Heatmap 2SFCA (Two-Step Floating Catchment Area) tool **produces a color-coded map visualizing spatial accessibility by combining supply capacity and demand in a single measure**.
 
 <!-- TODO: Add YouTube video embed when available
 <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -19,7 +19,7 @@ The Heatmap - 2SFCA (Two-Step Floating Catchment Area) indicator **produces a co
 ## 1. Explanation
 
 The 2SFCA method measures **spatial accessibility by considering both supply (capacity of facilities) and demand (population)**. Unlike simple supply-demand ratios per administrative unit, 2SFCA accounts for cross-boundary access — people can reach facilities in neighboring areas, and facilities serve populations beyond their own district.
-The result is a **supply-to-demand ratio at the level of hexagonal grid cells**. The indicator works in two steps:
+The result is a **supply-to-demand ratio at the level of hexagonal grid cells**. The tool works in two steps:
 
 1. **Step 1 — Capacity Demand Ratios:** For each facility location, compute how much capacity is available relative to the total demand (population) within its catchment area. This produces a supply-to-demand ratio per facility.
 
@@ -71,7 +71,7 @@ If you would like to perform analyses beyond this geofence, feel free to [contac
 
 - Are there areas where school capacity is insufficient given the number of school-aged children in the catchment?
 
-## 3. How to use the indicator?
+## 3. How to use the tool?
 
 <div class="step">
   <div class="step-number">1</div>
@@ -262,7 +262,7 @@ Want to create visually compelling maps that tell a clear story? Learn how to cu
 
 The following example illustrates how the 2SFCA method works for each step.
 
-- **Step 1** computes a capacity ratio for each destination: `R_j = S_j / Σ D_k` — the destination's capacity divided by the total population within its catchment. A destination with 100 beds serving 100 people has a ratio of 1.
+- **Step 1** computes a capacity ratio for each destination. A destination with 100 beds serving 100 people has a ratio of 1.
 
 <div style={{ display: 'flex', justifyContent: 'center' }}>
 <img src={require('/img/toolbox/accessibility_indicators/heatmaps/two_step_floating_catchment_area/step1_2sfca.png').default} alt="Heatmap 2SFCA Result in GOAT" style={{ maxHeight: "auto", maxWidth: "80%"}}/>
@@ -328,9 +328,9 @@ The three variants differ in how the impedance function *f(d)* is applied:
 
 Where *w(d)* is the selected impedance function (Gaussian, Linear, Exponential, or Power). 
 
-### 2SFCA Variants
+### Comparison of variants
 
-The different calculation approaches change how distance is perceived and measured, as illustrated in the examples below. Each scenario shows a facility with **100 units of capacity** (indicated by the central location marker) serving grid cells with **100 units of demand each**. We assume a **maximum travel time of 5 minutes**, where small arrows represent **1-minute travel time** and large arrows represent **2-minute travel time**. A **linear impedance function** is used for Enhanced and Modified variants. 
+The different calculation approaches change how distance is perceived and measured, as illustrated in the examples below. Each scenario shows a facility with **100 units of capacity** (indicated by the central location marker) serving grid cells with **50 units of demand each**. We assume a **maximum travel time of 5 minutes**, where small arrows represent **1-minute travel time** and large arrows represent **2-minute travel time**. A **linear impedance function** ($f(d) = 1 - d/5$) is used for Enhanced and Modified variants.
 
 <div style={{ display: 'flex', justifyContent: 'center' }}>
 <img src={require('/img/toolbox/accessibility_indicators/heatmaps/two_step_floating_catchment_area/2sfca_variants_comparaison.png').default} alt="Comparison of 2SFCA Variants showing distance weighting effects" style={{ maxHeight: "auto", maxWidth: "80%"}}/>
@@ -348,12 +348,11 @@ The different calculation approaches change how distance is perceived and measur
 
 **GOAT uses the following impedance functions for the Enhanced and Modified 2SFCA variants:**
 
-
 *Modified Gaussian, (Kwan,1998):*
 
 <MathJax.Provider>
   <div style={{ marginTop: '20px', fontSize: '24px'  }}>
-    <MathJax.Node formula={"f(t_{i,j})=\\exp^{(-t_{i,j}^2/\\beta)}"} />
+    <MathJax.Node formula={"f(t_{ij})=\\exp{(-t_{ij}^2/\\beta)}"} />
   </div>
 </MathJax.Provider>
 
@@ -386,10 +385,11 @@ Leveraging the *sensitivity* you define, the Gaussian function allows you to mod
 
 <div><MathJax.Provider>
   <div style={{ marginTop: '20px', fontSize: '24px'  }}>
-    <MathJax.Node formula={"f(t_{i,j})=\\exp^{(-\\beta t_{i,j})}"} />
+    <MathJax.Node formula={"f(t_{ij})=\\exp^{(-\\beta t_{ij})}"} />
   </div>
 </MathJax.Provider>
     </div>  
+
 
 *Inverse Power, (Kwan,1998) (`power` in GOAT):*
 

@@ -454,7 +454,7 @@
       "description": "Calculate catchment area by time or distance"
     },
     "max_distance": {
-      "label": "maximum Distance",
+      "label": "Maximum Distance",
       "description": "Define the maximum travel distance in meters"
     },
     "compactness_weight": {

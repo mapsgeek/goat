@@ -1,5 +1,6 @@
 import logging
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -130,24 +131,20 @@ class ClusteringParams(BaseModel):
         ),
     )
 
-    compactness_weight: float = Field(
+    compactness_weight: Literal[0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.5] = Field(
         default=0.01,
-        ge=0.0,
-        le=0.5,
-        description="Weight for the compactness fitness criterion ",
+        description="Weight for the compactness fitness criterion.",
         json_schema_extra=ui_field(
             section="configuration",
             field_order=7,
             label_key="compactness_weight",
-            widget="slider",
-            widget_options={"min": 0, "max": 0.5, "step": 0.01},
             visible_when={
                 "$and": [
                     {"cluster_type": "equal_size"},
                     {"use_compactness": True},
                 ]
             },
-             advanced=True,
+            advanced=True,
         ),
     )
 
