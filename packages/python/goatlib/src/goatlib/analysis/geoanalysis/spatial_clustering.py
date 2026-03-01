@@ -147,9 +147,14 @@ class ClusteringZones(AnalysisTool):
             self.con.execute(""" CREATE OR REPLACE TEMP TABLE ga_seeds ( individual_id INTEGER, cluster_id INTEGER,seed_id INTEGER) """)
 
             self._init_population(k)
-            self._create_individuals_from_seeds_batch(
-                list(range(self.population_size)), k, n_features, n_weighted_features, use_compactness
-            )
+            if n_features > 1000:
+                batch_size = max(5, self.population_size // 4)
+                for batch_start in range(0, self.population_size, batch_size):
+                    batch_ids = list(range(batch_start, min(batch_start + batch_size, self.population_size)))
+                    self._create_individuals_from_seeds_batch(batch_ids, k, n_features, n_weighted_features, use_compactness)
+            else:
+                self._create_individuals_from_seeds_batch( list(range(self.population_size)), k, n_features, n_weighted_features, use_compactness )
+
             logger.info("Created initial population of %d individuals", self.population_size)
 
             # Genetic algorithm evolution 
@@ -771,9 +776,16 @@ class ClusteringZones(AnalysisTool):
 
         
         logger.info("Creating %d new individuals via zone growing...", len(new_individual_ids))
-        self._create_individuals_from_seeds_batch(
-            new_individual_ids, k, n_features, n_weighted_features, use_compactness
-        )
+        if n_features > 1000:
+            batch_size = max(5, len(new_individual_ids) // 4)
+            for batch_start in range(0, len(new_individual_ids), batch_size):
+                batch_ids = new_individual_ids[batch_start:batch_start + batch_size]
+                self._create_individuals_from_seeds_batch(batch_ids, k, n_features, n_weighted_features, use_compactness)
+        else:
+            self._create_individuals_from_seeds_batch(
+                new_individual_ids, k, n_features, n_weighted_features, use_compactness
+            )
+
         updated_next_id = next_individual_id + len(new_individual_ids)
         return new_individual_ids, elite_ids, updated_next_id
 
