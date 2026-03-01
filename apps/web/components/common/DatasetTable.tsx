@@ -49,7 +49,14 @@ const Row = ({ row, fields }) => {
                 {objectFields.map((field) => {
                   const rawValue = row.properties[field.name];
                   // Handle both string (JSON) and object values
-                  const jsonData = typeof rawValue === "string" ? JSON.parse(rawValue) : rawValue;
+                  let jsonData = rawValue;
+                  if (typeof rawValue === "string") {
+                    try {
+                      jsonData = JSON.parse(rawValue);
+                    } catch {
+                      // Not valid JSON, keep as-is
+                    }
+                  }
                   const isJsonDataArrayOfObjects =
                     Array.isArray(jsonData) &&
                     jsonData.length > 0 &&
@@ -144,7 +151,7 @@ const DatasetTable: React.FC<DatasetTableProps> = ({ areFieldsLoading, displayDa
               </TableRow>
             )}
             {displayData.features?.length &&
-              displayData.features.map((row, index) => <Row key={row.id || index} row={row} fields={fields} />)}
+              displayData.features.map((row, index) => <Row key={index} row={row} fields={fields} />)}
           </TableBody>
         </Table>
       )}
