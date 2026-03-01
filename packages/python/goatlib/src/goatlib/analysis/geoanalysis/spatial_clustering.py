@@ -140,7 +140,7 @@ class ClusteringZones(AnalysisTool):
         if params.cluster_type == ClusterType.equal_size:
             # Step 1: Create initial population using K-means for seeding
             self._run_kmeans(k, max_iter=50)
-            self._build_distance_neighbor_graph()
+            self._build_distance_neighbor_graph(n_features, k)
             
             # Create ga_assignments table to store all individuals and ga_seeds table to store seed array
             self.con.execute(""" CREATE OR REPLACE TEMP TABLE ga_assignments (individual_id INTEGER,feature_id INTEGER, cluster_id INTEGER ) """)
@@ -338,14 +338,26 @@ class ClusteringZones(AnalysisTool):
         )
         return [(output_path, features_meta), (summary_path, summary_meta)]
 
-    def _build_distance_neighbor_graph(self: Self) -> None:
+    def _build_distance_neighbor_graph(self: Self, n_features: int, k: int) -> None:
         """
-        Build neighbor graph: find 10 nearest candidates per feature, then select 5
-        that balance proximity with directional diversity (angular spread).
-        This prevents all neighbors being on one side of a feature.
+        Build neighbor graph: find nearest candidates per feature, then select
+        a subset that balances proximity with directional diversity (angular spread).
+        Parameters adapt when points_per_cluster < 20 to avoid over-connecting sparse clusters.
         """
-        # Step 1: Find 10 nearest candidates with angle to each
-        self.con.execute("""
+        points_per_cluster = n_features // k
+
+        # Adaptive parameters: reduce graph density for small clusters
+        if points_per_cluster <= 20:
+            n_candidates = 6
+            n_sectors = 3
+            n_neighbors = 3
+        else:
+            n_candidates = 8
+            n_sectors = 4
+            n_neighbors = 4
+
+        # Step 1: Find nearest candidates with angle to each
+        self.con.execute(f"""
             CREATE OR REPLACE TEMP TABLE neighbor_candidates AS
             WITH ranked AS (
                 SELECT
@@ -361,14 +373,14 @@ class ClusteringZones(AnalysisTool):
                 WHERE p1.feature_id != p2.feature_id
             )
             SELECT from_id, to_id, dist_sq, dist_rank, angle,
-                   FLOOR((angle + PI()) / (2 * PI() /4))::INTEGER % 4 AS sector
+                   FLOOR((angle + PI()) / (2 * PI() / {n_sectors}))::INTEGER % {n_sectors} AS sector
             FROM ranked
-            WHERE dist_rank <= 10
+            WHERE dist_rank <= {n_candidates}
         """)
 
-        # Step 2: Pick best per sector (closest in each of 4 angular sectors),
+        # Step 2: Pick best per sector (closest in each angular sector),
         # then fill remaining slots by pure proximity
-        self.con.execute("""
+        self.con.execute(f"""
             CREATE OR REPLACE TEMP TABLE neighbors AS
             WITH sector_best AS (
                 SELECT from_id, to_id, dist_sq, sector,
@@ -400,7 +412,7 @@ class ClusteringZones(AnalysisTool):
                 SELECT rs.from_id, rs.to_id, rs.dist_sq
                 FROM remaining_slots rs
                 JOIN sector_pick_count spc ON rs.from_id = spc.from_id
-                WHERE rs.fill_rank <= (5 - spc.n_picked)
+                WHERE rs.fill_rank <= ({n_neighbors} - spc.n_picked)
             ),
             all_picks AS (
                 SELECT from_id, to_id FROM sector_picks
@@ -411,7 +423,7 @@ class ClusteringZones(AnalysisTool):
         """)
 
         # Ensure full connectivity: add reverse edges for isolated features
-        self.con.execute("""
+        self.con.execute(f"""
             INSERT INTO neighbors (from_id, to_id)
             WITH isolated AS (
                 SELECT feature_id, x, y FROM features_metric p
@@ -427,7 +439,7 @@ class ClusteringZones(AnalysisTool):
                 JOIN features_metric p ON p.feature_id != ip.feature_id
             )
             SELECT closest_id AS from_id, isolated_id AS to_id
-            FROM closest WHERE rn <= 5
+            FROM closest WHERE rn <= {n_neighbors}
         """)
         logger.info("Neighbor graph built: %d edges",
             self.con.execute("SELECT COUNT(*) FROM neighbors").fetchone()[0])
