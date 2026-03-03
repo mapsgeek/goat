@@ -179,7 +179,6 @@ const ToolsTabContent: React.FC<ToolsTabContentProps> = ({ onDragStart }) => {
     () => [
       { id: "add_dataset", title: t("add_dataset") },
       { id: "export_dataset", title: t("export_dataset") },
-      { id: "custom_sql", title: t("custom_sql") },
     ],
     [t]
   );
@@ -203,8 +202,11 @@ const ToolsTabContent: React.FC<ToolsTabContentProps> = ({ onDragStart }) => {
       });
     }
 
+    // Add static data management items
+    categories.data_management.push({ id: "custom_sql", title: t("custom_sql") });
+
     return categories;
-  }, [ogcProcesses]);
+  }, [ogcProcesses, t]);
 
   // Filter helper
   const matchesSearch = useCallback(
@@ -255,11 +257,6 @@ const ToolsTabContent: React.FC<ToolsTabContentProps> = ({ onDragStart }) => {
     onDragStart(event, "export");
   };
 
-  // Handle drag start for Custom SQL node (creates a tool node with processId "custom_sql")
-  const handleCustomSqlDragStart = (event: React.DragEvent) => {
-    onDragStart(event, "tool", "custom_sql");
-  };
-
   const hasNoResults = filteredDataIoItems.length === 0 && sortedCategories.length === 0;
 
   return (
@@ -293,7 +290,6 @@ const ToolsTabContent: React.FC<ToolsTabContentProps> = ({ onDragStart }) => {
                       onDragStart={(event) => {
                         if (item.id === "add_dataset") handleDatasetDragStart(event);
                         else if (item.id === "export_dataset") handleExportDragStart(event);
-                        else if (item.id === "custom_sql") handleCustomSqlDragStart(event);
                       }}
                     />
                   </Grid>
