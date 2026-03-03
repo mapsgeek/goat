@@ -95,7 +95,8 @@ export default function MapPage({ params: { projectId } }) {
     }
   }, [_project]);
 
-  // Filter out layers that are in invisible layer groups
+  // Order layers using tree-aware DFS traversal so the map rendering order
+  // matches the visual tree order (layers inside a group inherit the group's position).
   const projectLayers = useMemo(() => {
     if (!allProjectLayers || !projectLayerGroups) {
       return allProjectLayers || [];
@@ -106,32 +107,64 @@ export default function MapPage({ params: { projectId } }) {
 
     const findInvisibleGroups = (groups: typeof projectLayerGroups) => {
       groups.forEach((group) => {
-        // Get visibility from properties (default to true if not set)
         const groupVisibility = group.properties?.visibility ?? true;
         if (!groupVisibility) {
           invisibleGroupIds.add(group.id);
         }
-        // Also check if parent group is invisible
         if (group.parent_id && invisibleGroupIds.has(group.parent_id)) {
           invisibleGroupIds.add(group.id);
         }
       });
     };
 
-    // Run multiple times to catch nested invisible groups
     let previousSize = -1;
     while (invisibleGroupIds.size !== previousSize) {
       previousSize = invisibleGroupIds.size;
       findInvisibleGroups(projectLayerGroups);
     }
 
-    // Filter out layers that belong to invisible groups
-    return allProjectLayers.filter((layer) => {
-      if (!layer.layer_project_group_id) {
-        return true; // Layer not in any group, so it's visible
+    // Build a lookup of children by parent_id for efficient DFS traversal.
+    // allProjectLayers is already sorted by order from useFilteredProjectLayers.
+    type TreeNode = { type: "group" | "layer"; id: number; order: number; layer?: (typeof allProjectLayers)[number] };
+    const childrenByParent = new Map<number | null, TreeNode[]>();
+
+    for (const group of projectLayerGroups) {
+      const parentKey = group.parent_id ?? null;
+      if (!childrenByParent.has(parentKey)) childrenByParent.set(parentKey, []);
+      childrenByParent.get(parentKey)!.push({ type: "group", id: group.id, order: group.order ?? 0 });
+    }
+
+    for (const layer of allProjectLayers) {
+      const parentKey = layer.layer_project_group_id ?? null;
+      if (!childrenByParent.has(parentKey)) childrenByParent.set(parentKey, []);
+      childrenByParent.get(parentKey)!.push({ type: "layer", id: layer.id, order: layer.order ?? 0, layer });
+    }
+
+    // Sort each group of children by order
+    for (const children of childrenByParent.values()) {
+      children.sort((a, b) => a.order - b.order);
+    }
+
+    // DFS traversal collects layers in visual tree order
+    const orderedLayers: (typeof allProjectLayers)[number][] = [];
+    const collectLayers = (parentId: number | null) => {
+      const children = childrenByParent.get(parentId);
+      if (!children) return;
+      for (const child of children) {
+        if (child.type === "layer" && child.layer) {
+          if (!child.layer.layer_project_group_id || !invisibleGroupIds.has(child.layer.layer_project_group_id)) {
+            orderedLayers.push(child.layer);
+          }
+        } else if (child.type === "group") {
+          if (!invisibleGroupIds.has(child.id)) {
+            collectLayers(child.id);
+          }
+        }
       }
-      return !invisibleGroupIds.has(layer.layer_project_group_id);
-    });
+    };
+    collectLayers(null);
+
+    return orderedLayers;
   }, [allProjectLayers, projectLayerGroups]);
 
   const { activeBasemap } = useBasemap(project);
