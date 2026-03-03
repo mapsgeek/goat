@@ -16,7 +16,10 @@ Standards and best practices for GOAT documentation.
 
 ### Others
 
-- Include glossary links: `[Join](./glossary.md#join)`
+- Include glossary links, e.g.:
+  ```markdown
+  [Join](../further_reading/glossary.md#join)
+  ```
 - Use info boxes for important notes: `:::info` and `:::tip`
 - After the main title and before the explanation, add the Youtube video, if available, using the following iframe format and size:
  <iframe width="674" height="378" src="https://www.youtube.com/embed/VIDEO_ID" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>

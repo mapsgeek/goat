@@ -138,6 +138,18 @@
       }
     },
     {
+      "name": "Docs Debug",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "pnpm run --filter @p4b/docs dev",
+      "cwd": "${workspaceFolder}",
+      "presentation": {
+        "hidden": false,
+        "group": "frontend",
+        "order": 2
+      }
+    },
+    {
       "name": "Storybook Debug",
       "type": "node-terminal",
       "request": "launch",
@@ -213,7 +225,8 @@
         "GeoAPI Debug",
         "Processes Debug",
         "Core Debug",
-        "Web Debug"
+        "Web Debug",
+        "Docs Debug"
       ],
       "presentation": {
         "hidden": false,

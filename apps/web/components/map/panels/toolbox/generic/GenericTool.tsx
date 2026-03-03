@@ -540,7 +540,7 @@ export default function GenericTool({ processId, onBack, onClose }: GenericToolP
           {/* Description */}
           <Typography variant="body2" sx={{ fontStyle: "italic", mb: theme.spacing(4) }}>
             {process.description}
-            <LearnMore docsPath={`/toolbox/geoprocessing/${processId}`} />
+            <LearnMore docsPath={process.links?.find((l) => l.rel === "describedby")?.href ?? `/toolbox/geoprocessing/${processId}`} />
           </Typography>
 
           {/* Render sections dynamically */}

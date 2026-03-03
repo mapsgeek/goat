@@ -14,7 +14,7 @@ import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 import { useDateFnsLocale } from "@/i18n/utils";
 
 import { useOrganization } from "@/lib/api/users";
-import { CONTACT_US_URL, DOCS_URL, DOCS_VERSION, WEBSITE_URL } from "@/lib/constants";
+import { CONTACT_US_URL, DOCS_URL, WEBSITE_URL } from "@/lib/constants";
 import { setSelectedLayers } from "@/lib/store/layer/slice";
 import { setMapMode } from "@/lib/store/map/slice";
 import { setActiveRightPanel } from "@/lib/store/map/slice";
@@ -57,7 +57,6 @@ export default function Header(props: HeaderProps) {
   const { isOrgAdmin } = useAuthZ();
   const dateLocale = useDateFnsLocale();
   const lng = i18n.language === "de" ? "/de" : "";
-  const docsVersion = `/${DOCS_VERSION}`;
   const dispatch = useAppDispatch();
 
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
@@ -353,7 +352,7 @@ export default function Header(props: HeaderProps) {
                   <IconButton
                     size="small"
                     onClick={() => {
-                      window.open(`${DOCS_URL}${lng}${docsVersion}`, "_blank");
+                      window.open(`${DOCS_URL}${lng}`, "_blank");
                     }}>
                     <Icon iconName={ICON_NAME.BOOK} fontSize="inherit" />
                   </IconButton>

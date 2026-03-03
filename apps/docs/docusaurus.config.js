@@ -42,13 +42,12 @@ const config = {
             if (translation !== 'en') {
               return `https://github.com/plan4better/goat/edit/main/apps/docs/i18n/${translation}/docusaurus-plugin-content-docs/current/${docPath}`;
             }
-            return `https://github.com/plan4better/goat/edit/main/apps/docs/${docPath}`;
+            return `https://github.com/plan4better/goat/edit/main/apps/docs/docs/${docPath}`;
           },
           lastVersion: "current",
           versions: {
             current: {
-              label: "2.0",
-              path: "2.0",
+              path: "",
             },
           },
         },
@@ -72,6 +71,15 @@ const config = {
             return `https://github.com/plan4better/goat/edit/main/apps/docs/i18n/${translation}/docusaurus-plugin-content-docs-tutorials/current/${docPath}`;
           }
           return `https://github.com/plan4better/goat/edit/main/apps/docs/tutorials/${docPath}`;
+        },
+      },
+    ],
+    [
+      "@docusaurus/plugin-client-redirects",
+      {
+        createRedirects(existingPath) {
+          // Redirect old /2.0/ versioned URLs to the new unversioned paths
+          return [`/2.0${existingPath}`];
         },
       },
     ],
@@ -109,11 +117,12 @@ const config = {
             type: "localeDropdown",
             position: "right"
           },
-          {
-            type: "docsVersionDropdown",
-            position: "right",
-            dropdownActiveClassDisabled: true,
-          },
+          // Re-enable when multiple doc versions exist:
+          // {
+          //   type: "docsVersionDropdown",
+          //   position: "right",
+          //   dropdownActiveClassDisabled: true,
+          // },
           {
             href: "https://github.com/plan4better/goat",
             label: "GitHub",

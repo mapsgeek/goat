@@ -19,7 +19,6 @@ export const ACCOUNTS_DISABLED =
   accountsDisabledRaw.toLowerCase() === "true";
 
 export const DOCS_URL = "https://goat.plan4better.de/docs";
-export const DOCS_VERSION = "2.0/category/getting-started";
 export const CONTACT_US_URL = "https://plan4better.de/contact";
 export const WEBSITE_URL = "https://plan4better.de";
 export const MAPBOX_TOKEN =

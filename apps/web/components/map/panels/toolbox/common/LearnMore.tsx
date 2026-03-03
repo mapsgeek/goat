@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 
 import { ICON_NAME, Icon } from "@p4b/ui/components/Icon";
 
-import { DOCS_URL, DOCS_VERSION } from "@/lib/constants";
+import { DOCS_URL } from "@/lib/constants";
 
 const HoverSpan = styled("span")<{ hoverColor: string }>`
   cursor: pointer;
@@ -26,14 +26,11 @@ const LearnMore: React.FC<LearnMoreProps> = ({ docsPath }) => {
 
   const lng = i18n.language === "de" ? "/de" : "";
 
-  //TODO: Get this dynamically
-  const docsVersion = `/${DOCS_VERSION}`;
-
   return (
     <Tooltip title={t("learn_more")} placement="top">
       <HoverSpan
         hoverColor={theme.palette.primary.main}
-        onClick={() => window.open(`${DOCS_URL}${lng}${docsVersion}${docsPath}`, "_blank")}>
+        onClick={() => window.open(`${DOCS_URL}${lng}${docsPath}`, "_blank")}>
         <Icon
           iconName={ICON_NAME.BOOK}
           style={{
