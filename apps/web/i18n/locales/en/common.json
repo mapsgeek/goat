@@ -806,6 +806,7 @@
   "leave_team": "Leave team",
   "leave_team_confirmation_body": "Are you sure you want to leave this team? This will remove all your shared data and projects. <strong> This action cannot be undone! </strong>",
   "legend": "Legend",
+  "legend_label": "Legend label",
   "legend_map_connection": "Map Connection",
   "legend_map_connection_help": "Connect the legend to a specific map element to show only layers visible in that map.",
   "less": "Less",

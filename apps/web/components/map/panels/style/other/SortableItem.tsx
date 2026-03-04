@@ -1,7 +1,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { DragIndicator } from "@mui/icons-material";
-import { Grid, MenuItem, Stack, useTheme } from "@mui/material";
+import { MenuItem, Stack, useTheme } from "@mui/material";
 
 import { DragHandle } from "@/components/common/DragHandle";
 
@@ -13,6 +13,7 @@ type SortableItemProps = {
   picker?: React.ReactNode;
   children?: React.ReactNode;
   actions?: React.ReactNode;
+  subtitle?: React.ReactNode;
 };
 
 export function SortableItem(props: SortableItemProps) {
@@ -42,26 +43,25 @@ export function SortableItem(props: SortableItemProps) {
           },
         },
       }}>
-      <Grid container alignItems="center" justifyContent="start" spacing={2}>
-        <Grid item xs={1} sx={{ mx: 1 }}>
-          <DragHandle {...attributes} listeners={listeners}>
-            <DragIndicator fontSize="small" />
-          </DragHandle>
-        </Grid>
-        {props.picker && (
-          <Grid item xs={2} zeroMinWidth>
-            {props.picker}
-          </Grid>
-        )}
-        <Grid item xs zeroMinWidth>
-          {props.children}
-        </Grid>
-        <Grid item xs={2} zeroMinWidth>
-          <Stack direction="row" justifyContent="flex-end" sx={{ pr: 3 }}>
-            {props.actions && props.actions}
+      <Stack direction="row" alignItems="start" spacing={1} sx={{ width: "100%", minWidth: 0 }}>
+        <DragHandle {...attributes} listeners={listeners}>
+          <DragIndicator sx={{ fontSize: 18, mt: "4px" }} />
+        </DragHandle>
+        {props.picker && props.picker}
+        <Stack sx={{ flex: 1, minWidth: 0 }}>
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <Stack sx={{ flex: 1, minWidth: 0 }}>
+              {props.children}
+            </Stack>
+            {props.actions && (
+              <Stack direction="row" alignItems="center" sx={{ pr: 2, gap: 0.5 }}>
+                {props.actions}
+              </Stack>
+            )}
           </Stack>
-        </Grid>
-      </Grid>
+          {props.subtitle}
+        </Stack>
+      </Stack>
     </MenuItem>
   );
 }

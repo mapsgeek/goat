@@ -93,12 +93,16 @@ const ColorOptions = ({
               setSelectedColorScaleMethod={(colorScale) => {
                 const newStyle = JSON.parse(JSON.stringify(layerStyle)) || {};
                 newStyle[`${type}_scale`] = colorScale;
+                const colorRange = newStyle[`${type}_range`] as ColorRange;
+                if (colorRange) {
+                  delete colorRange.color_legends;
+                }
                 onStyleChange && onStyleChange(newStyle);
               }}
               label={t("color_scale")}
               activeLayerId={layerId}
               activeLayerField={layerStyle[`${type}_field`] || { name: "", type: "string" }}
-              onCustomApply={(colorMaps) => {
+              onCustomApply={(colorMaps, colorLegends) => {
                 const newStyle = JSON.parse(JSON.stringify(layerStyle)) || {};
                 const colorRange = newStyle[`${type}_range`] as ColorRange;
                 colorRange.name = "Custom";
@@ -108,6 +112,13 @@ const ColorOptions = ({
                 // This are considered custom colors.
                 colorRange.colors = colorMaps.map((colorMap) => colorMap[1]);
                 colorRange.type = "custom";
+                colorRange.color_legends = colorLegends;
+                onStyleChange && onStyleChange(newStyle);
+              }}
+              onColorLegendsChange={(colorLegends) => {
+                const newStyle = JSON.parse(JSON.stringify(layerStyle)) || {};
+                const colorRange = newStyle[`${type}_range`] as ColorRange;
+                colorRange.color_legends = colorLegends;
                 onStyleChange && onStyleChange(newStyle);
               }}
               intervals={layerStyle?.[`${type}_range`]?.colors.length}

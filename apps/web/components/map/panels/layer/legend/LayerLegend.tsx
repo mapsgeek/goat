@@ -103,7 +103,7 @@ export const LayerLegendPanel = ({ properties, geometryType }: LayerLegendPanelP
             </Typography>
             {colorMap.map((item, index) => (
               <React.Fragment key={`${item.color}-${item.value?.join(",") || index}`}>
-                {renderRow(item.value?.join(", ") || "Other", <LayerIcon type="point" color={item.color} />)}
+                {renderRow(item.label || item.value?.join(", ") || "Other", <LayerIcon type="point" color={item.color} />)}
               </React.Fragment>
             ))}
           </>
@@ -124,7 +124,7 @@ export const LayerLegendPanel = ({ properties, geometryType }: LayerLegendPanelP
         {colorMap.map((item, index) => (
           <React.Fragment key={`${item.color}-${item.value?.join(",") || index}`}>
             {renderRow(
-              item.value?.join(", ") || "Other",
+              item.label || item.value?.join(", ") || "Other",
               <LayerIcon
                 type="point"
                 iconUrl={singleMarker.marker || ""}
@@ -164,7 +164,7 @@ export const LayerLegendPanel = ({ properties, geometryType }: LayerLegendPanelP
           {colorMap.map((item, index) => (
             <React.Fragment key={`fill-${item.color}-${item.value?.join(",") || index}`}>
               {renderRow(
-                item.value?.join(", ") || "Other",
+                item.label || item.value?.join(", ") || "Other",
                 <LayerIcon type={geometryType} color={item.color} filled={filled} />
               )}
             </React.Fragment>
@@ -177,7 +177,7 @@ export const LayerLegendPanel = ({ properties, geometryType }: LayerLegendPanelP
           {strokeMap.map((item, index) => (
             <React.Fragment key={`stroke-${item.color}-${item.value?.join(",") || index}`}>
               {renderRow(
-                item.value?.join(", ") || "Other",
+                item.label || item.value?.join(", ") || "Other",
                 <LayerIcon type={geometryType} color={undefined} strokeColor={item.color} filled={false} />
               )}
             </React.Fragment>
@@ -195,7 +195,7 @@ export const LayerLegendPanel = ({ properties, geometryType }: LayerLegendPanelP
         {colorMap.map((item, index) => (
           <React.Fragment key={`${item.color}-${item.value?.join(",") || index}`}>
             {renderRow(
-              item.value?.join(", ") || "Other",
+              item.label || item.value?.join(", ") || "Other",
               <LayerIcon
                 type={geometryType}
                 color={item.color}
@@ -219,7 +219,7 @@ export const LayerLegendPanel = ({ properties, geometryType }: LayerLegendPanelP
         {strokeMap.map((item, index) => (
           <React.Fragment key={`${item.color}-${item.value?.join(",") || index}`}>
             {renderRow(
-              item.value?.join(", ") || "Other",
+              item.label || item.value?.join(", ") || "Other",
               <LayerIcon type={geometryType} color={undefined} strokeColor={item.color} filled={false} />
             )}
           </React.Fragment>

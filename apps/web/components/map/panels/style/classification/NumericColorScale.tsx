@@ -1,12 +1,14 @@
-import { Box, Grid, MenuItem, Select, Stack, TextField, Typography, useTheme } from "@mui/material";
-import { useMemo } from "react";
+import { Box, InputBase, MenuItem, Select, Stack, TextField, Typography, useTheme } from "@mui/material";
+import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { formatNumber } from "@/lib/utils/helpers";
 import type { ClassBreaks, ColorMap, ColorRange } from "@/lib/validations/layer";
 import { classBreaks } from "@/lib/validations/layer";
 
-import type { ColorScaleSelectorProps } from "@/types/map/color";
+import type { ColorLegends, ColorScaleSelectorProps } from "@/types/map/color";
+
+import DropdownFooter from "@/components/map/panels/style/other/DropdownFooter";
 
 type NumericColorScaleProps = ColorScaleSelectorProps & {
   setIsClickAwayEnabled: (isClickAwayEnabled: boolean) => void;
@@ -17,6 +19,10 @@ const NumericColorScale = (props: NumericColorScaleProps) => {
   const theme = useTheme();
   const { classBreaksValues } = props;
   const { t } = useTranslation("common");
+
+  const existingLegends = (props.colorSet.selectedColor as ColorRange)?.color_legends as
+    | ColorLegends
+    | undefined;
 
   const colorMapValues = useMemo(() => {
     if (!classBreaksValues || !Array.isArray(classBreaksValues.breaks)) {
@@ -37,8 +43,37 @@ const NumericColorScale = (props: NumericColorScaleProps) => {
     return intervalValues;
   }, [classBreaksValues, props.colorSet.selectedColor]);
 
+  const [labels, setLabels] = useState<Record<string, string>>(() => ({ ...existingLegends }));
+
+  // Sync local labels when external legends change (e.g., classification method switch clears them)
+  useEffect(() => {
+    setLabels({ ...existingLegends });
+  }, [existingLegends]);
+
+  const hasChanges = useMemo(() => {
+    const existing = existingLegends || {};
+    const currentKeys = Object.keys(labels).filter((k) => labels[k]);
+    const existingKeys = Object.keys(existing).filter((k) => existing[k]);
+    if (currentKeys.length !== existingKeys.length) return true;
+    return currentKeys.some((k) => labels[k] !== existing[k]);
+  }, [labels, existingLegends]);
+
+  function onApply() {
+    const cleanedLegends: ColorLegends = {};
+    Object.entries(labels).forEach(([color, label]) => {
+      if (label) cleanedLegends[color] = label;
+    });
+    props.onColorLegendsChange?.(Object.keys(cleanedLegends).length > 0 ? cleanedLegends : undefined);
+    props.onCancel?.();
+  }
+
+  function onCancel() {
+    props.onCancel?.();
+  }
+
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ pt: 3, pb: 3, pl: 3, pr: 0 }}>
+      <Box sx={{ pr: 3 }}>
       <Select
         fullWidth
         size="small"
@@ -71,59 +106,86 @@ const NumericColorScale = (props: NumericColorScaleProps) => {
           Max: <b>{classBreaksValues?.max ? formatNumber(classBreaksValues?.max) : ""}</b>
         </Typography>
       </Stack>
-      <Box sx={{ maxHeight: "240px", overflowY: "auto", pt: 2 }}>
-        <Grid container alignItems="center" justifyContent="center" spacing={2}>
+      </Box>
+      <Box sx={{ maxHeight: "300px", overflowY: "auto", pt: 2 }}>
+        <Stack spacing={1} sx={{ pr: 3 }}>
           {colorMapValues &&
             colorMapValues.map((colorMapValue, index) => (
-              <>
-                <Grid item xs={2} key={`color_${colorMapValues[index][1]}`}>
-                  <div
-                    style={{
+              <Box key={`row_${index}`}>
+                <Stack direction="row" alignItems="center" spacing={1}>
+                  <Box
+                    sx={{
                       borderRadius: "4px",
                       width: "32px",
+                      minWidth: "32px",
                       height: "20px",
                       backgroundColor: colorMapValue[1],
                     }}
                   />
-                </Grid>
-                <Grid item xs={10} key={`color_${colorMapValues[index][0]}`}>
-                  <Stack justifyContent="end" alignItems="center" spacing={1} direction="row" sx={{ px: 2 }}>
-                    <TextField
-                      margin="dense"
-                      value={index === 0 ? `<${classBreaksValues?.min}` : colorMapValues[index - 1][0]}
-                      disabled
-                      InputProps={{ sx: { height: "32px" } }}
-                      sx={{
-                        "& .MuiOutlinedInput-input": {
-                          padding: `0 ${theme.spacing(2)}`,
-                        },
-                      }}
-                    />
-                    <Typography>-</Typography>
-                    <TextField
-                      margin="dense"
-                      value={
-                        colorMapValues[index][0] === null
-                          ? `>${classBreaksValues?.max}`
-                          : colorMapValues[index][0]
-                      }
-                      disabled
-                      InputProps={{ sx: { height: "32px" } }}
-                      sx={{
-                        "& .MuiOutlinedInput-input": {
-                          padding: `0 ${theme.spacing(2)}`,
-                        },
-                      }}
-                    />
-                  </Stack>
-                </Grid>
-              </>
+                  <TextField
+                    size="small"
+                    value={index === 0 ? `<${classBreaksValues?.min}` : colorMapValues[index - 1][0]}
+                    disabled
+                    InputProps={{ sx: { height: "28px" } }}
+                    sx={{
+                      flex: 1,
+                      "& .MuiOutlinedInput-input": {
+                        padding: `0 ${theme.spacing(1)}`,
+                        fontSize: 12,
+                      },
+                    }}
+                  />
+                  <Typography variant="body2">-</Typography>
+                  <TextField
+                    size="small"
+                    value={
+                      colorMapValues[index][0] === null
+                        ? `>${classBreaksValues?.max}`
+                        : colorMapValues[index][0]
+                    }
+                    disabled
+                    InputProps={{ sx: { height: "28px" } }}
+                    sx={{
+                      flex: 1,
+                      "& .MuiOutlinedInput-input": {
+                        padding: `0 ${theme.spacing(1)}`,
+                        fontSize: 12,
+                      },
+                    }}
+                  />
+                </Stack>
+                <InputBase
+                  value={labels[colorMapValue[1]] || ""}
+                  placeholder={t("legend_label")}
+                  onChange={(e) => {
+                    setLabels((prev) => ({ ...prev, [colorMapValue[1]]: e.target.value }));
+                  }}
+                  sx={{
+                    fontSize: 11,
+                    color: "text.secondary",
+                    pl: "40px",
+                    "& .MuiInputBase-input": {
+                      p: 0,
+                      "&::placeholder": {
+                        opacity: 0.5,
+                        fontStyle: "italic",
+                      },
+                    },
+                  }}
+                />
+              </Box>
             ))}
-        </Grid>
+        </Stack>
       </Box>
-      <Stack sx={{ pt: 4 }}>
-        <Typography variant="caption">{t("common:change_colors_and_steps")}</Typography>
-      </Stack>
+      {hasChanges ? (
+        <Box sx={{ mt: 2, pr: 3 }}>
+          <DropdownFooter isValid={true} onCancel={onCancel} onApply={onApply} />
+        </Box>
+      ) : (
+        <Stack sx={{ pt: 4, pr: 3 }}>
+          <Typography variant="caption">{t("common:change_colors_and_steps")}</Typography>
+        </Stack>
+      )}
     </Box>
   );
 };

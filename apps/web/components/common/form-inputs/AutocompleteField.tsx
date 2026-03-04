@@ -79,8 +79,8 @@ export const RhfAutocompleteField = <
                   />
                 </Box>
               )}
-              renderOption={(props, option) => (
-                <li {...props} key={option.value}>
+              renderOption={({ key, ...props }, option) => (
+                <li {...props} key={key}>
                   {option.icon && (
                     <ListItemIcon
                       sx={{

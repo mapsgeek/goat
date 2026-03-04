@@ -1,8 +1,8 @@
 import { setColorFunction } from "@geomatico/maplibre-cog-protocol";
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo, useRef } from "react";
 import type { FilterSpecification } from "maplibre-gl";
 import type { LayerProps, MapGeoJSONFeature } from "react-map-gl/maplibre";
-import { Layer as MapLayer, Source } from "react-map-gl/maplibre";
+import { Layer as MapLayer, Source, useMap } from "react-map-gl/maplibre";
 
 import { GEOAPI_BASE_URL, SYSTEM_LAYERS_IDS } from "@/lib/constants";
 import { excludes as excludeOp } from "@/lib/transformers/filter";
@@ -27,6 +27,7 @@ interface LayersProps {
 }
 
 const Layers = (props: LayersProps) => {
+  const { current: mapRef } = useMap();
   const temporaryFilters = useAppSelector((state) => state.map.temporaryFilters);
   const mapMode = useAppSelector((state) => state.map.mapMode);
 
@@ -133,10 +134,61 @@ const Layers = (props: LayersProps) => {
     return { useDataLayers: dataLayers, systemLayers: sysLayers };
   }, [props.layers]);
 
+  // Render in reverse order for correct initial stacking (MapLibre stacks bottom-to-top).
+  // Reordering is handled imperatively via map.moveLayer() to avoid cross-Source timing
+  // issues with beforeId (layers in different Sources don't mount synchronously).
+  const reversedDataLayers = useMemo(
+    () => (useDataLayers ? [...useDataLayers].reverse() : []),
+    [useDataLayers]
+  );
+
+  // Imperatively reorder layers when the layer order changes (e.g., drag-and-drop).
+  const prevOrderRef = useRef<string>("");
+  useEffect(() => {
+    if (!mapRef || !useDataLayers || useDataLayers.length < 2) return;
+
+    const orderKey = useDataLayers.map((l) => l.id).join(",");
+    // On initial mount, just record the order (reversed rendering handles it)
+    if (!prevOrderRef.current) {
+      prevOrderRef.current = orderKey;
+      return;
+    }
+    // Skip if order hasn't changed
+    if (orderKey === prevOrderRef.current) return;
+    prevOrderRef.current = orderKey;
+
+    const map = mapRef.getMap();
+    const styleLayers = map.getStyle()?.layers || [];
+
+    // For each data layer, find all MapLibre layers sharing its source
+    const desiredTopToBottom: string[] = [];
+    for (const layer of useDataLayers) {
+      const mainLayerId = layer.id.toString();
+      const mainLayer = styleLayers.find((l) => l.id === mainLayerId);
+      if (!mainLayer || !("source" in mainLayer)) continue;
+      const sourceId = mainLayer.source;
+      // Collect all layers with this source (styleLayers is bottom-to-top, reverse for top-to-bottom)
+      const group = styleLayers
+        .filter((l) => "source" in l && l.source === sourceId)
+        .map((l) => l.id)
+        .reverse();
+      desiredTopToBottom.push(...group);
+    }
+
+    // Reorder by moving each layer before the previous one in the desired order
+    for (let i = 1; i < desiredTopToBottom.length; i++) {
+      try {
+        map.moveLayer(desiredTopToBottom[i], desiredTopToBottom[i - 1]);
+      } catch {
+        // Layer might not be on map yet
+      }
+    }
+  }, [useDataLayers, mapRef]);
+
   return (
     <>
-      {useDataLayers?.length
-        ? useDataLayers.map((layer: ProjectLayer | Layer, index: number) =>
+      {reversedDataLayers.length
+        ? reversedDataLayers.map((layer: ProjectLayer | Layer) =>
             (() => {
               if (layer.type === "feature") {
                 const { filter: layerFilter, layerStyleSpec } = splitLayerFilter(
@@ -173,9 +225,6 @@ const Layers = (props: LayersProps) => {
                         id={layer.id.toString()}
                         {...layerStyleSpec}
                         {...(mapLayerFilter ? { filter: mapLayerFilter } : {})}
-                        beforeId={
-                          index === 0 || !useDataLayers ? undefined : useDataLayers[index - 1].id.toString()
-                        }
                         source-layer="default"
                       />
                     )}
@@ -185,9 +234,6 @@ const Layers = (props: LayersProps) => {
                         id={`stroke-${layer.id.toString()}`}
                         minzoom={layer.properties.min_zoom || 0}
                         maxzoom={layer.properties.max_zoom || 24}
-                        beforeId={
-                          index === 0 || !useDataLayers ? undefined : useDataLayers[index - 1].id.toString()
-                        }
                         {...strokeStyleSpec}
                         {...(mapStrokeFilter ? { filter: mapStrokeFilter } : {})}
                         source-layer="default"
@@ -209,9 +255,6 @@ const Layers = (props: LayersProps) => {
                         maxzoom={layer.properties.max_zoom || 24}
                         {...labelStyleSpec}
                         {...(mapLabelFilter ? { filter: mapLabelFilter } : {})}
-                        beforeId={
-                          index === 0 || !useDataLayers ? undefined : useDataLayers[index - 1].id.toString()
-                        }
                       />
                     )}
 
@@ -252,9 +295,6 @@ const Layers = (props: LayersProps) => {
                       maxzoom={layer.properties?.max_zoom || 24}
                       type="raster"
                       source-layer="default"
-                      beforeId={
-                        index === 0 || !useDataLayers ? undefined : useDataLayers[index - 1].id.toString()
-                      }
                       layout={{
                         visibility: layer.properties?.visibility ? "visible" : "none",
                       }}

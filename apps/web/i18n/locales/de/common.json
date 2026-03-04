@@ -815,6 +815,7 @@
   "leave_team": "Team verlassen",
   "leave_team_confirmation_body": "Sind Sie sicher, dass Sie dieses Team verlassen möchten? \nDadurch werden alle Ihre freigegebenen Daten und Projekte entfernt. \n<strong> Diese Aktion kann nicht rückgängig gemacht werden! \n</strong>",
   "legend": "Legende",
+  "legend_label": "Legendenbezeichnung",
   "legend_map_connection": "Kartenverbindung",
   "legend_map_connection_help": "Verbinden Sie die Legende mit einem bestimmten Kartenelement, um nur die in dieser Karte sichtbaren Layer anzuzeigen.",
   "less": "Weniger",

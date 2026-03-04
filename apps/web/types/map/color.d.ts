@@ -14,7 +14,8 @@ export type ColorScaleSelectorProps = {
   selectedColorScaleMethod?: ClassBreaks;
   classBreaksValues?: LayerClassBreaks;
   setSelectedColorScaleMethod: (colorScale: ClassBreaks) => void;
-  onCustomApply?: (colorMaps: ColorMap) => void;
+  onCustomApply?: (colorMaps: ColorMap, colorLegends?: ColorLegends) => void;
+  onColorLegendsChange?: (colorLegends?: ColorLegends) => void;
   colorSet: ColorSet;
   label?: string;
   tooltip?: string;
@@ -49,4 +50,5 @@ export type ValueItem = {
 
 export type ColorMapItem = ColorItem & {
   value: string[] | null;
+  label?: string;
 };

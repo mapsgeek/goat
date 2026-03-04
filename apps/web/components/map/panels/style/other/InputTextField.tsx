@@ -44,7 +44,7 @@ const InputTextField = ({
         style: {
           width: "48px",
           padding: "0px 0px 0px 5px",
-          height: "30px",
+          height: "28px",
           fontSize: "0.75rem",
         },
       }}

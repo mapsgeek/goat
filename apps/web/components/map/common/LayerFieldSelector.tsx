@@ -81,13 +81,16 @@ const LayerFieldSelector = (props: SelectorProps) => {
   const { t } = useTranslation("common");
   const selectedValue = useMemo(() => {
     if (!props.multiple && !Array.isArray(selectedField)) {
-      return selectedField ? JSON.stringify(selectedField) : "";
+      if (!selectedField) return "";
+      // Only set the value if the field exists in available options to avoid MUI out-of-range warnings
+      const fieldExists = safeFields.some((f) => f.name === selectedField.name);
+      return fieldExists ? JSON.stringify(selectedField) : "";
     } else {
       return selectedField && Array.isArray(selectedField) && selectedField.length > 0
         ? selectedField.map((field) => JSON.stringify(field))
         : EMPTY_FIELDS;
     }
-  }, [props.multiple, selectedField]);
+  }, [props.multiple, selectedField, safeFields]);
 
   return (
     <FormControl size="small" fullWidth>

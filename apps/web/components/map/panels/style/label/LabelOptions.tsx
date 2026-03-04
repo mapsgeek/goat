@@ -110,7 +110,6 @@ const LabelOptions = ({
             label={t("label_by")}
           />
         }
-        advancedOptions={<></>}
         collapsed={false}
       />
 

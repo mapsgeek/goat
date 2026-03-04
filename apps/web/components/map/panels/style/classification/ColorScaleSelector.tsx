@@ -46,8 +46,8 @@ const ColorScaleSelector = (props: ColorScaleSelectorProps) => {
                 <CustomColorScale
                   {...props}
                   onCancel={() => setOpen(false)}
-                  onApply={(colorMaps) => {
-                    props.onCustomApply && props.onCustomApply(colorMaps);
+                  onApply={(colorMaps, colorLegends) => {
+                    props.onCustomApply && props.onCustomApply(colorMaps, colorLegends);
                     setOpen(false);
                   }}
                   setIsClickAwayEnabled={setIsClickAwayEnabled}

@@ -40,35 +40,27 @@ export function getMapboxStyleColor(data: ProjectLayer | Layer, type: "color" | 
   const colors = data.properties[`${type}_range`]?.colors;
 
   const fieldName = data.properties[`${type}_field`]?.name;
-  const fieldType = data.properties[`${type}_field`]?.type;
   const colorScale = data.properties[`${type}_scale`];
   const colorMaps = data.properties[`${type}_range`]?.color_map;
   if (colorMaps && fieldName && Array.isArray(colorMaps) && colorScale === "ordinal") {
-    const valuesAndColors = [] as (string | number)[];
+    const valuesAndColors = [] as string[];
+    const seenValues = new Set<string>();
     colorMaps.forEach((colorMap) => {
       const colorMapValue = colorMap[0];
       const colorMapHex = colorMap[1];
       if (!colorMapValue || !colorMapHex) return;
-      if (Array.isArray(colorMapValue)) {
-        colorMapValue.forEach((value: string) => {
-          if (fieldType === "number" && value !== null) {
-            valuesAndColors.push(Number(value));
-          } else {
-            valuesAndColors.push(value);
-          }
-          valuesAndColors.push(colorMapHex);
-        });
-      } else {
-        if (fieldType === "number" && colorMapValue !== null) {
-          valuesAndColors.push(Number(colorMapValue));
-        } else {
-          valuesAndColors.push(colorMapValue);
-        }
+      const values = Array.isArray(colorMapValue) ? colorMapValue : [colorMapValue];
+      values.forEach((value: string) => {
+        if (value === null || seenValues.has(String(value))) return;
+        seenValues.add(String(value));
+        valuesAndColors.push(String(value));
         valuesAndColors.push(colorMapHex);
-      }
+      });
     });
 
-    return ["match", ["get", fieldName], ...valuesAndColors, "#AAAAAA"];
+    // Use to-string to ensure string comparison — MapLibre match only supports
+    // integer numeric labels, so string matching is needed for float/decimal values.
+    return ["match", ["to-string", ["get", fieldName]], ...valuesAndColors, "#AAAAAA"];
   }
 
   if (
@@ -133,34 +125,24 @@ export function getMapboxStyleMarker(data: ProjectLayer | Layer) {
   const properties = data.properties as FeatureLayerPointProperties;
   const markerMaps = properties.marker_mapping;
   const fieldName = properties.marker_field?.name;
-  const fieldType = properties.marker_field?.type;
   const marker = `${data.id}-${properties.marker?.name}`;
   if (markerMaps && fieldName) {
-    const valuesAndIcons = [] as (string | number)[];
+    const valuesAndIcons = [] as string[];
+    const seenValues = new Set<string>();
     markerMaps.forEach((markerMap) => {
       const markerMapValue = markerMap[0];
       const markerMapIcon = markerMap[1];
       if (!markerMapValue || !markerMapIcon) return;
-      if (Array.isArray(markerMapValue)) {
-        markerMapValue.forEach((value: string) => {
-          if (fieldType === "number" && value !== null) {
-            valuesAndIcons.push(Number(value));
-          } else {
-            valuesAndIcons.push(value);
-          }
-          valuesAndIcons.push(`${data.id}-${markerMapIcon.name}`);
-        });
-      } else {
-        if (fieldType === "number" && markerMapValue !== null) {
-          valuesAndIcons.push(Number(markerMapValue));
-        } else {
-          valuesAndIcons.push(markerMapValue);
-        }
+      const values = Array.isArray(markerMapValue) ? markerMapValue : [markerMapValue];
+      values.forEach((value: string) => {
+        if (value === null || seenValues.has(String(value))) return;
+        seenValues.add(String(value));
+        valuesAndIcons.push(String(value));
         valuesAndIcons.push(`${data.id}-${markerMapIcon.name}`);
-      }
+      });
     });
 
-    return ["match", ["get", fieldName], ...valuesAndIcons, marker];
+    return ["match", ["to-string", ["get", fieldName]], ...valuesAndIcons, marker];
   }
 
   return marker;

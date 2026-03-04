@@ -442,7 +442,6 @@ const InteractionOptions = ({
             placeholder={t("show_popup_on")}
           />
         }
-        advancedOptions={<></>}
         collapsed={false}
       />
 
@@ -570,7 +569,6 @@ const InteractionOptions = ({
             </Stack>
           </div>
         }
-        advancedOptions={<></>}
         collapsed={false}
       />
     </>

@@ -72,7 +72,6 @@ export const LegendOptions = ({
             )}
           </Stack>
         }
-        advancedOptions={<></>}
         collapsed={false}
       />
     </>

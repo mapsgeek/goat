@@ -6,6 +6,7 @@ import type { RGBColor } from "@/types/map/color";
 export type ColorMapItem = {
   value: string[] | null;
   color: string;
+  label?: string;
 };
 
 export type MarkerMapItem = {
@@ -26,10 +27,11 @@ const createRangeAndColor = (
   rangeEnd: number,
   color: string,
   isFirst?: boolean,
-  isLast?: boolean
+  isLast?: boolean,
+  label?: string
 ): void => {
   const range = `${isFirst ? "<" : ""}${formatNumber(rangeStart, 2)} - ${isLast ? ">" : ""}${formatNumber(rangeEnd, 2)}`;
-  colorMap.push({ value: [range], color });
+  colorMap.push({ value: [range], color, ...(label ? { label } : {}) });
 };
 
 // --- MAIN PARSERS ---
@@ -41,6 +43,11 @@ export function getLegendColorMap(
   const colorMap: ColorMapItem[] = [];
   if (!properties) return colorMap;
 
+  // Read color_legends for custom labels
+  const colorLegends = (properties[`${type}_range`] as Record<string, unknown>)?.color_legends as
+    | Record<string, string>
+    | undefined;
+
   // 1. Attribute Field Based (Complex Legend)
   if (properties?.[`${type}_field`]) {
     if (["ordinal"].includes(properties[`${type}_scale`] as string)) {
@@ -48,7 +55,12 @@ export function getLegendColorMap(
       ((properties[`${type}_range`] as Record<string, unknown>)?.color_map as unknown[])?.forEach(
         (value: unknown) => {
           if (Array.isArray(value) && value.length === 2) {
-            colorMap.push({ value: value[0], color: value[1] as string });
+            const color = value[1] as string;
+            colorMap.push({
+              value: value[0],
+              color,
+              ...(colorLegends?.[color] ? { label: colorLegends[color] } : {}),
+            });
           }
         }
       );
@@ -90,37 +102,50 @@ export function getLegendColorMap(
         ((classBreaksValues as Record<string, unknown>).breaks as number[]).forEach(
           (value: number, index: number) => {
             if (index === 0) {
+              const color0 = getColor(colors, index);
               createRangeAndColor(
                 colorMap,
                 (classBreaksValues as Record<string, unknown>).min as number,
                 value,
-                getColor(colors, index),
-                true
+                color0,
+                true,
+                false,
+                colorLegends?.[color0]
               );
+              const color1 = getColor(colors, index + 1);
               createRangeAndColor(
                 colorMap,
                 value,
                 ((classBreaksValues as Record<string, unknown>).breaks as number[])[index + 1],
-                getColor(colors, index + 1)
+                color1,
+                false,
+                false,
+                colorLegends?.[color1]
               );
             } else if (
               index ===
               ((classBreaksValues as Record<string, unknown>).breaks as number[]).length - 1
             ) {
+              const color = getColor(colors, index + 1);
               createRangeAndColor(
                 colorMap,
                 value,
                 (classBreaksValues as Record<string, unknown>).max as number,
-                getColor(colors, index + 1),
+                color,
                 false,
-                true
+                true,
+                colorLegends?.[color]
               );
             } else {
+              const color = getColor(colors, index + 1);
               createRangeAndColor(
                 colorMap,
                 value,
                 ((classBreaksValues as Record<string, unknown>).breaks as number[])[index + 1],
-                getColor(colors, index + 1)
+                color,
+                false,
+                false,
+                colorLegends?.[color]
               );
             }
           }

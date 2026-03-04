@@ -1,6 +1,6 @@
 import type { DragEndEvent } from "@dnd-kit/core";
 import { arrayMove } from "@dnd-kit/sortable";
-import { Box, Button, Chip, MenuItem, Select, Stack, Tooltip, Typography, useTheme } from "@mui/material";
+import { Box, Button, Chip, InputBase, MenuItem, Select, Stack, Tooltip, Typography, useTheme } from "@mui/material";
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { v4 } from "uuid";
@@ -11,7 +11,7 @@ import { formatNumber, isValidHex } from "@/lib/utils/helpers";
 import type { ClassBreaks, ColorMap } from "@/lib/validations/layer";
 import { classBreaks } from "@/lib/validations/layer";
 
-import type { ColorItem, ColorMapItem, ColorScaleSelectorProps, ValueItem } from "@/types/map/color";
+import type { ColorItem, ColorLegends, ColorMapItem, ColorScaleSelectorProps, ValueItem } from "@/types/map/color";
 
 import { OverflowTypograpy } from "@/components/common/OverflowTypography";
 import DropdownFooter from "@/components/map/panels/style/other/DropdownFooter";
@@ -24,7 +24,7 @@ import SortableWrapper from "@/components/map/panels/style/other/SortableWrapper
 type CustomColorScaleProps = ColorScaleSelectorProps & {
   setIsClickAwayEnabled: (isClickAwayEnabled: boolean) => void;
   onCancel?: () => void;
-  onApply?: (colorMaps: ColorMap) => void;
+  onApply?: (colorMaps: ColorMap, colorLegends?: ColorLegends) => void;
 };
 
 const CustomBreaksRowItem = ({
@@ -52,43 +52,49 @@ const CustomBreaksRowItem = ({
   );
 
   return (
-    <Stack direction="row" spacing={0.5} alignItems="center" justifyContent="space-between">
+    <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
       {item.value?.[0] !== undefined && (
         <>
           {currentValue !== null && (
-            <InputTextField
-              error={currentValue < minAllowedValue || currentValue > maxAllowedValue}
-              min={minAllowedValue}
-              max={maxAllowedValue}
-              value={currentValue}
-              onChange={(e) => {
-                setCurrentValue(Number(e.target.value));
-              }}
-              onBlur={() => {
-                onBlur && onBlur(currentValue, index);
-              }}
-            />
+            <Box sx={{ flex: 1, minWidth: 0, "& input": { width: "100% !important" } }}>
+              <InputTextField
+                error={currentValue < minAllowedValue || currentValue > maxAllowedValue}
+                min={minAllowedValue}
+                max={maxAllowedValue}
+                value={currentValue}
+                outlineInputSx={{ width: "100%" }}
+                onChange={(e) => {
+                  setCurrentValue(Number(e.target.value));
+                }}
+                onBlur={() => {
+                  onBlur && onBlur(currentValue, index);
+                }}
+              />
+            </Box>
           )}
           <Typography variant="body2" fontWeight="bold">
             –
           </Typography>
           {nextValue !== null && (
-            <InputTextField
-              step={1}
-              value={nextValue}
-              error={nextValue < minAllowedValue || nextValue > maxAllowedValue}
-              min={minAllowedValue}
-              max={maxAllowedValue}
-              onChange={(e) => {
-                setNextValue(Number(e.target.value));
-              }}
-              onBlur={() => {
-                onBlur && onBlur(nextValue, index + 1);
-              }}
-            />
+            <Box sx={{ flex: 1, minWidth: 0, "& input": { width: "100% !important" } }}>
+              <InputTextField
+                step={1}
+                value={nextValue}
+                error={nextValue < minAllowedValue || nextValue > maxAllowedValue}
+                min={minAllowedValue}
+                max={maxAllowedValue}
+                outlineInputSx={{ width: "100%" }}
+                onChange={(e) => {
+                  setNextValue(Number(e.target.value));
+                }}
+                onBlur={() => {
+                  onBlur && onBlur(nextValue, index + 1);
+                }}
+              />
+            </Box>
           )}
           {index === valueMaps.length - 1 && (
-            <Typography variant="body2" fontWeight="bold" sx={{ width: "60px", pl: 1 }}>
+            <Typography variant="body2" fontWeight="bold" noWrap sx={{ pl: 0.5 }}>
               {t("common:more")}
             </Typography>
           )}
@@ -113,7 +119,7 @@ const CustomOrdinalRowItem = ({
   const theme = useTheme();
 
   return (
-    <>
+    <Stack direction="row" alignItems="center" sx={{ minWidth: 0, overflow: "hidden" }}>
       <OverflowTypograpy
         variant="body2"
         fontWeight="bold"
@@ -154,7 +160,7 @@ const CustomOrdinalRowItem = ({
           <Chip size="small" sx={{ ml: 2 }} label={`+${item.value.length - 1}`} />
         </Tooltip>
       )}
-    </>
+    </Stack>
   );
 };
 
@@ -164,12 +170,15 @@ const CustomColorScale = (props: CustomColorScaleProps) => {
   const { t } = useTranslation("common");
 
   const getValueMaps = React.useCallback(() => {
+    const colorLegends = colorSet.selectedColor.color_legends as ColorLegends | undefined;
     const valueMaps =
-      colorSet.selectedColor.color_map?.map((colorMap: ColorMap) => {
+      colorSet.selectedColor.color_map?.map((colorMapEntry) => {
+        const color = colorMapEntry[1] as string;
         return {
           id: v4(),
-          value: colorMap[0],
-          color: colorMap[1],
+          value: colorMapEntry[0],
+          color,
+          label: colorLegends?.[color] || "",
         };
       }) || [];
 
@@ -182,7 +191,7 @@ const CustomColorScale = (props: CustomColorScaleProps) => {
       };
     });
     return sortedColorMaps;
-  }, [colorSet.selectedColor.color_map]);
+  }, [colorSet.selectedColor.color_map, colorSet.selectedColor.color_legends]);
 
   const [valueMaps, setValueMaps] = React.useState<ColorMapItem[]>(getValueMaps());
 
@@ -316,16 +325,25 @@ const CustomColorScale = (props: CustomColorScaleProps) => {
     editingValues && setEditingValues({ ...editingValues, values });
   };
 
+  function onLabelChange(id: string, label: string) {
+    const newColorMaps = valueMaps.map((item) => (item.id === id ? { ...item, label } : item));
+    setValueMaps(newColorMaps);
+  }
+
   function onCancel() {
     props.onCancel && props.onCancel();
   }
 
   function onApply() {
     const colorMaps = [] as ColorMap;
+    const colorLegends: ColorLegends = {};
     valueMaps.forEach((item) => {
       colorMaps.push([item.value, item.color]);
+      if (item.label) {
+        colorLegends[item.color] = item.label;
+      }
     });
-    props.onApply && props.onApply(colorMaps);
+    props.onApply && props.onApply(colorMaps, Object.keys(colorLegends).length > 0 ? colorLegends : undefined);
   }
 
   function sortandSetValueMapsValues(valueMaps: ColorMapItem[]) {
@@ -421,8 +439,9 @@ const CustomColorScale = (props: CustomColorScaleProps) => {
                       handleColorPicker(e, colorItem);
                     }}
                     sx={{
-                      height: "20px",
+                      height: "28px",
                       width: "32px",
+                      minWidth: "32px",
                       borderRadius: "4px",
                       backgroundColor: item.color,
                       "&:hover": {
@@ -443,7 +462,6 @@ const CustomColorScale = (props: CustomColorScaleProps) => {
                             cursor: "pointer",
                             color: theme.palette.primary.main,
                           },
-                          mr: 1,
                         }}
                         onClick={() => {
                           handleAddCustomBreak(item, index);
@@ -476,16 +494,28 @@ const CustomColorScale = (props: CustomColorScaleProps) => {
                       />
                     )}
                   </>
+                }
+                subtitle={
+                  <InputBase
+                    value={item.label || ""}
+                    placeholder={t("legend_label")}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => onLabelChange(item.id, e.target.value)}
+                    sx={{
+                      fontSize: 11,
+                      color: "text.secondary",
+                      "& .MuiInputBase-input": {
+                        p: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        "&::placeholder": {
+                          opacity: 0.5,
+                          fontStyle: "italic",
+                        },
+                      },
+                    }}
+                  />
                 }>
-                <Stack
-                  direction="row"
-                  sx={{
-                    py: 1,
-                    pr: 0,
-                    "&:hover": {
-                      color: "primary.main",
-                    },
-                  }}>
                   {props.selectedColorScaleMethod === "ordinal" && (
                     <CustomOrdinalRowItem
                       item={item}
@@ -511,7 +541,6 @@ const CustomColorScale = (props: CustomColorScaleProps) => {
                       }}
                     />
                   )}
-                </Stack>
               </SortableItem>
             ))}
           </SortableWrapper>
