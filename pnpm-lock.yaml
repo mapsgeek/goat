@@ -314,6 +314,15 @@ importers:
       '@sentry/utils':
         specifier: ^8.55.0
         version: 8.55.0
+      '@tiptap/core':
+        specifier: 3.3.1
+        version: 3.3.1(@tiptap/pm@3.3.1)
+      '@tiptap/extension-color':
+        specifier: 3.3.1
+        version: 3.3.1(@tiptap/extension-text-style@3.3.1(@tiptap/core@3.3.1(@tiptap/pm@3.3.1)))
+      '@tiptap/extension-font-family':
+        specifier: 3.3.1
+        version: 3.3.1(@tiptap/extension-text-style@3.3.1(@tiptap/core@3.3.1(@tiptap/pm@3.3.1)))
       '@tiptap/extension-strike':
         specifier: 3.3.1
         version: 3.3.1(@tiptap/core@3.3.1(@tiptap/pm@3.3.1))
@@ -5293,6 +5302,11 @@ packages:
     peerDependencies:
       '@tiptap/core': ^3.3.1
 
+  '@tiptap/extension-color@3.3.1':
+    resolution: {integrity: sha512-qjhjIWG05EXur4+RfFU8Mw4skpozHgE7EIOQwc/Al7Zt5N20v0KDAuEalLldro+RBZ7O1VFqpFVnfZ4divIjNQ==}
+    peerDependencies:
+      '@tiptap/extension-text-style': ^3.3.1
+
   '@tiptap/extension-document@3.3.1':
     resolution: {integrity: sha512-rn0YNie7n7uTgtD1RoX5zwN/Vb43lkkhRJPPHfB+1KZXkW/tviTcKVPqw50ogKY1+Cvd35w9Gq4AqqOiNmsUKw==}
     peerDependencies:
@@ -5309,6 +5323,11 @@ packages:
       '@floating-ui/dom': ^1.0.0
       '@tiptap/core': ^3.3.1
       '@tiptap/pm': ^3.3.1
+
+  '@tiptap/extension-font-family@3.3.1':
+    resolution: {integrity: sha512-Nf1Vu61nIFW36y6or9V6N7yXwsly86y2ufilOXaHN9W922tx4gniwUYokbYL5T9ZyvSjkCTDE5yfQMP+QhbbNQ==}
+    peerDependencies:
+      '@tiptap/extension-text-style': ^3.3.1
 
   '@tiptap/extension-gapcursor@3.3.1':
     resolution: {integrity: sha512-IwkHdkUMP1nyMZnHFcigyslmWprcd9ulP4IvPfGjeA7h7hJbrEvcFDPkMmtnI47SlQaD0nZrRlvHGPoRol1P/A==}
@@ -23081,6 +23100,10 @@ snapshots:
     dependencies:
       '@tiptap/core': 3.3.1(@tiptap/pm@3.3.1)
 
+  '@tiptap/extension-color@3.3.1(@tiptap/extension-text-style@3.3.1(@tiptap/core@3.3.1(@tiptap/pm@3.3.1)))':
+    dependencies:
+      '@tiptap/extension-text-style': 3.3.1(@tiptap/core@3.3.1(@tiptap/pm@3.3.1))
+
   '@tiptap/extension-document@3.3.1(@tiptap/core@3.3.1(@tiptap/pm@3.3.1))':
     dependencies:
       '@tiptap/core': 3.3.1(@tiptap/pm@3.3.1)
@@ -23095,6 +23118,10 @@ snapshots:
       '@tiptap/core': 3.3.1(@tiptap/pm@3.3.1)
       '@tiptap/pm': 3.3.1
     optional: true
+
+  '@tiptap/extension-font-family@3.3.1(@tiptap/extension-text-style@3.3.1(@tiptap/core@3.3.1(@tiptap/pm@3.3.1)))':
+    dependencies:
+      '@tiptap/extension-text-style': 3.3.1(@tiptap/core@3.3.1(@tiptap/pm@3.3.1))
 
   '@tiptap/extension-gapcursor@3.3.1(@tiptap/extensions@3.3.1(@tiptap/core@3.3.1(@tiptap/pm@3.3.1))(@tiptap/pm@3.3.1))':
     dependencies:
@@ -26967,7 +26994,7 @@ snapshots:
       eslint: 8.57.0
       eslint-import-resolver-node: 0.3.9
       eslint-import-resolver-typescript: 3.6.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0))(eslint@8.57.0)
-      eslint-plugin-import: 2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-typescript@3.6.1)(eslint@8.57.0)
+      eslint-plugin-import: 2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-typescript@3.6.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0))(eslint@8.57.0))(eslint@8.57.0)
       eslint-plugin-jsx-a11y: 6.9.0(eslint@8.57.0)
       eslint-plugin-react: 7.33.2(eslint@8.57.0)
       eslint-plugin-react-hooks: 4.6.2(eslint@8.57.0)
@@ -27027,7 +27054,7 @@ snapshots:
       enhanced-resolve: 5.17.1
       eslint: 8.57.0
       eslint-module-utils: 2.8.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0))(eslint@8.57.0))(eslint@8.57.0)
-      eslint-plugin-import: 2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-typescript@3.6.1)(eslint@8.57.0)
+      eslint-plugin-import: 2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-typescript@3.6.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0))(eslint@8.57.0))(eslint@8.57.0)
       fast-glob: 3.3.2
       get-tsconfig: 4.7.6
       is-core-module: 2.15.0
@@ -27094,7 +27121,7 @@ snapshots:
       - eslint-import-resolver-webpack
       - supports-color
 
-  eslint-plugin-import@2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-typescript@3.6.1)(eslint@8.57.0):
+  eslint-plugin-import@2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-typescript@3.6.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.29.1(@typescript-eslint/parser@6.21.0(eslint@8.57.0)(typescript@5.9.3))(eslint@8.57.0))(eslint@8.57.0))(eslint@8.57.0):
     dependencies:
       array-includes: 3.1.8
       array.prototype.findlastindex: 1.2.5

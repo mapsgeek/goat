@@ -3,6 +3,7 @@
 import { Box, Stack, Typography } from "@mui/material";
 import React, { useMemo } from "react";
 
+import type { TypographyStyle } from "@/lib/constants/typography";
 import { rgbToHex } from "@/lib/utils/helpers";
 import type { RGBColor } from "@/types/map/color";
 import type { ProjectLayer } from "@/lib/validations/project";
@@ -10,6 +11,29 @@ import type { ReportElement } from "@/lib/validations/reportLayout";
 
 import { LayerIcon } from "@/components/map/panels/layer/legend/LayerIcon";
 import { LayerLegendPanel } from "@/components/map/panels/layer/legend/LayerLegend";
+
+/**
+ * Convert TypographyStyle to MUI sx props
+ */
+function typographyToSx(style?: TypographyStyle): Record<string, unknown> {
+  if (!style) return {};
+  const sx: Record<string, unknown> = {};
+  if (style.fontFamily) sx.fontFamily = style.fontFamily;
+  if (style.fontSize) sx.fontSize = style.fontSize;
+  if (style.fontColor) sx.color = style.fontColor;
+  if (style.fontWeight) sx.fontWeight = style.fontWeight;
+  return sx;
+}
+
+/**
+ * Legend typography configuration (per text role)
+ */
+interface LegendTypographyConfig {
+  title?: TypographyStyle;
+  layerName?: TypographyStyle;
+  legendItem?: TypographyStyle;
+  caption?: TypographyStyle;
+}
 
 /**
  * Legend element configuration interface
@@ -26,6 +50,8 @@ export interface LegendElementConfig {
     columns?: number;
     showLayerNames?: boolean;
   };
+  /** Typography settings for different text roles */
+  typography?: LegendTypographyConfig;
 }
 
 interface LegendElementRendererProps {
@@ -54,6 +80,7 @@ const LegendElementRenderer: React.FC<LegendElementRendererProps> = ({
   const config = element.config as LegendElementConfig;
   const titleText = config?.title?.text ?? "";
   const layoutConfig = config?.layout ?? { columns: 1, showLayerNames: true };
+  const typography = config?.typography;
 
   // Filter layers based on map element binding
   const filteredLayers = useMemo(() => {
@@ -97,6 +124,7 @@ const LegendElementRenderer: React.FC<LegendElementRendererProps> = ({
           sx={{
             fontWeight: "bold",
             mb: 1,
+            ...typographyToSx(typography?.title),
           }}>
           {titleText}
         </Typography>
@@ -120,6 +148,7 @@ const LegendElementRenderer: React.FC<LegendElementRendererProps> = ({
               key={layer.id}
               layer={layer}
               showLayerName={layoutConfig.showLayerNames !== false}
+              typography={typography}
             />
           ))}
         </Box>
@@ -136,9 +165,10 @@ const LegendElementRenderer: React.FC<LegendElementRendererProps> = ({
 interface LayerLegendItemProps {
   layer: ProjectLayer;
   showLayerName?: boolean;
+  typography?: LegendTypographyConfig;
 }
 
-const LayerLegendItem: React.FC<LayerLegendItemProps> = ({ layer, showLayerName = true }) => {
+const LayerLegendItem: React.FC<LayerLegendItemProps> = ({ layer, showLayerName = true, typography }) => {
   const props = layer.properties as Record<string, unknown>;
   const geomType = layer.type === "feature"
     ? (layer.feature_layer_geometry_type || "polygon")
@@ -205,6 +235,7 @@ const LayerLegendItem: React.FC<LayerLegendItemProps> = ({ layer, showLayerName 
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
+              ...typographyToSx(typography?.layerName),
             }}>
             {layer.name}
           </Typography>
@@ -213,7 +244,10 @@ const LayerLegendItem: React.FC<LayerLegendItemProps> = ({ layer, showLayerName 
 
       {/* Legend caption */}
       {!!(props.legend && (props.legend as Record<string, unknown>).caption) && (
-        <Typography variant="caption" fontWeight="bold" sx={{ display: "block", mb: 0.5 }}>
+        <Typography
+          variant="caption"
+          fontWeight="bold"
+          sx={{ display: "block", mb: 0.5, ...typographyToSx(typography?.caption) }}>
           {String((props.legend as Record<string, unknown>).caption)}
         </Typography>
       )}

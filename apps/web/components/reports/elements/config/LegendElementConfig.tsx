@@ -1,11 +1,13 @@
 "use client";
 
-import { Stack, TextField, useTheme } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { Collapse, Stack, TextField, Typography, useTheme } from "@mui/material";
 import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
+import type { TypographyStyle } from "@/lib/constants/typography";
 import type { ReportElement } from "@/lib/validations/reportLayout";
 
 import type { SelectorItem } from "@/types/map/common";
@@ -14,6 +16,17 @@ import FormLabelHelper from "@/components/common/FormLabelHelper";
 import SectionHeader from "@/components/map/panels/common/SectionHeader";
 import SectionOptions from "@/components/map/panels/common/SectionOptions";
 import Selector from "@/components/map/panels/common/Selector";
+import TypographyStyleControl from "@/components/reports/elements/config/TypographyStyleControl";
+
+/**
+ * Legend typography configuration (per text role)
+ */
+export interface LegendTypographyConfig {
+  title?: TypographyStyle;
+  layerName?: TypographyStyle;
+  legendItem?: TypographyStyle;
+  caption?: TypographyStyle;
+}
 
 /**
  * Legend element configuration interface (matches LegendElementRenderer)
@@ -30,6 +43,8 @@ interface LegendElementConfig {
     columns?: number;
     showBackground?: boolean;
   };
+  /** Typography settings for different text roles */
+  typography?: LegendTypographyConfig;
 }
 
 interface LegendElementConfigProps {
@@ -55,6 +70,13 @@ const LegendElementConfig: React.FC<LegendElementConfigProps> = ({ element, mapE
   const [infoCollapsed, setInfoCollapsed] = useState(false);
   const [dataCollapsed, setDataCollapsed] = useState(false);
   const [optionsCollapsed, setOptionsCollapsed] = useState(false);
+  const [typographyCollapsed, setTypographyCollapsed] = useState(false);
+
+  // Typography sub-group collapsed states
+  const [titleTypoOpen, setTitleTypoOpen] = useState(false);
+  const [layerNameTypoOpen, setLayerNameTypoOpen] = useState(false);
+  const [legendItemTypoOpen, setLegendItemTypoOpen] = useState(false);
+  const [captionTypoOpen, setCaptionTypoOpen] = useState(false);
 
   // Extract current config
   const config = (element.config || {}) as LegendElementConfig;
@@ -122,6 +144,17 @@ const LegendElementConfig: React.FC<LegendElementConfigProps> = ({ element, mapE
     if (!item || Array.isArray(item)) return;
     updateConfig({
       layout: { ...layoutConfig, columns: item.value as number },
+    });
+  };
+
+  // Handle typography updates
+  const typographyConfig = config.typography ?? {};
+  const handleTypographyChange = (role: keyof LegendTypographyConfig, style: TypographyStyle) => {
+    updateConfig({
+      typography: {
+        ...typographyConfig,
+        [role]: style,
+      },
     });
   };
 
@@ -208,6 +241,110 @@ const LegendElementConfig: React.FC<LegendElementConfigProps> = ({ element, mapE
           </Stack>
         }
       />
+
+      {/* Typography Section */}
+      <SectionHeader
+        label={t("typography")}
+        icon={ICON_NAME.TEXT}
+        active={true}
+        alwaysActive
+        collapsed={typographyCollapsed}
+        setCollapsed={setTypographyCollapsed}
+        disableAdvanceOptions
+      />
+      <SectionOptions
+        active={true}
+        collapsed={typographyCollapsed}
+        baseOptions={
+          <Stack spacing={1}>
+            {/* Title Typography */}
+            <TypographySubGroup
+              label={t("title_typography")}
+              open={titleTypoOpen}
+              onToggle={() => setTitleTypoOpen(!titleTypoOpen)}>
+              <TypographyStyleControl
+                value={typographyConfig.title ?? {}}
+                onChange={(style) => handleTypographyChange("title", style)}
+              />
+            </TypographySubGroup>
+
+            {/* Layer Name Typography */}
+            <TypographySubGroup
+              label={t("layer_name_typography")}
+              open={layerNameTypoOpen}
+              onToggle={() => setLayerNameTypoOpen(!layerNameTypoOpen)}>
+              <TypographyStyleControl
+                value={typographyConfig.layerName ?? {}}
+                onChange={(style) => handleTypographyChange("layerName", style)}
+              />
+            </TypographySubGroup>
+
+            {/* Legend Item Typography */}
+            <TypographySubGroup
+              label={t("legend_item_typography")}
+              open={legendItemTypoOpen}
+              onToggle={() => setLegendItemTypoOpen(!legendItemTypoOpen)}>
+              <TypographyStyleControl
+                value={typographyConfig.legendItem ?? {}}
+                onChange={(style) => handleTypographyChange("legendItem", style)}
+              />
+            </TypographySubGroup>
+
+            {/* Caption Typography */}
+            <TypographySubGroup
+              label={t("caption_typography")}
+              open={captionTypoOpen}
+              onToggle={() => setCaptionTypoOpen(!captionTypoOpen)}>
+              <TypographyStyleControl
+                value={typographyConfig.caption ?? {}}
+                onChange={(style) => handleTypographyChange("caption", style)}
+              />
+            </TypographySubGroup>
+          </Stack>
+        }
+      />
+    </Stack>
+  );
+};
+
+/**
+ * Collapsible sub-group for a typography text role
+ */
+const TypographySubGroup: React.FC<{
+  label: string;
+  open: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}> = ({ label, open, onToggle, children }) => {
+  const theme = useTheme();
+  return (
+    <Stack spacing={0}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        onClick={onToggle}
+        sx={{
+          cursor: "pointer",
+          py: 1,
+          px: 0.5,
+          borderRadius: 1,
+          "&:hover": { backgroundColor: theme.palette.action.hover },
+        }}>
+        <Typography variant="body2" fontWeight={500}>
+          {label}
+        </Typography>
+        <ExpandMoreIcon
+          fontSize="small"
+          sx={{
+            transform: open ? "rotate(180deg)" : "rotate(0deg)",
+            transition: "transform 0.2s",
+          }}
+        />
+      </Stack>
+      <Collapse in={open}>
+        <Stack sx={{ pl: 1, pt: 1, pb: 2 }}>{children}</Stack>
+      </Collapse>
     </Stack>
   );
 };

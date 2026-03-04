@@ -675,19 +675,22 @@ const ReportElementRenderer: React.FC<ReportElementRendererProps> = ({
           backgroundColor: elementBackgroundEnabled
             ? `rgba(${parseInt(elementBackgroundColor.slice(1, 3), 16)}, ${parseInt(elementBackgroundColor.slice(3, 5), 16)}, ${parseInt(elementBackgroundColor.slice(5, 7), 16)}, ${elementBackgroundOpacity})`
             : "transparent",
-          // Apply element border (if enabled), otherwise selection border
-          border: isSelected
+          // Apply element border (if enabled)
+          border: elementBorderEnabled
+            ? `${elementBorderWidthPx}px solid ${elementBorderColor}`
+            : "none",
+          // Selection indicator uses outline (doesn't affect layout/content position)
+          outline: isSelected
             ? `2px solid ${theme.palette.primary.main}`
-            : elementBorderEnabled
-              ? `${elementBorderWidthPx}px solid ${elementBorderColor}`
-              : "none",
+            : "none",
+          outlineOffset: 0,
           borderRadius: 0,
           overflow: "hidden",
           cursor: isMapNavigating ? "default" : isSelected ? "move" : "pointer",
           pointerEvents: "auto",
-          transition: "border-color 0.2s ease",
+          transition: "outline-color 0.2s ease",
           "&:hover": {
-            borderColor: isSelected ? theme.palette.primary.main : theme.palette.primary.light,
+            outlineColor: isSelected ? theme.palette.primary.main : theme.palette.primary.light,
           },
         }}>
         {/* Quick actions toolbar - visible when selected */}

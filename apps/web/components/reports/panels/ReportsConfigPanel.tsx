@@ -284,20 +284,31 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
     async (newName: string) => {
       if (!project?.id || !actionLayoutId) return;
 
-      const layout = reportLayouts?.find((r) => r.id === actionLayoutId);
-      if (!layout) return;
-
       try {
+        // Only send name — don't send config to avoid overwriting with stale SWR cache data
         await updateReportLayout(project.id, actionLayoutId, {
           name: newName,
-          config: layout.config,
         });
-        await mutate();
+        // Optimistic cache update: preserve selectedReport.config for the active report
+        // to avoid the useEffect replacing parent state with stale data
+        mutate(
+          reportLayouts?.map((r) =>
+            r.id === actionLayoutId
+              ? {
+                  ...r,
+                  name: newName,
+                  // Use selectedReport.config if this is the active report (has unsaved local changes)
+                  ...(actionLayoutId === selectedReport?.id && { config: selectedReport.config }),
+                }
+              : r
+          ),
+          { revalidate: false }
+        );
       } catch (error) {
         console.error("Failed to rename report layout:", error);
       }
     },
-    [project?.id, actionLayoutId, reportLayouts, mutate]
+    [project?.id, actionLayoutId, reportLayouts, mutate, selectedReport]
   );
 
   // Save settings to database when they change
@@ -317,14 +328,20 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
         await updateReportLayout(project.id, selectedReport.id, {
           config: updatedConfig,
         });
-        await mutate();
+        // Optimistic cache update to avoid re-fetch replacing parent's local state
+        mutate(
+          reportLayouts?.map((r) =>
+            r.id === selectedReport.id ? { ...r, config: updatedConfig } : r
+          ),
+          { revalidate: false }
+        );
       } catch (error) {
         console.error("Failed to update report layout:", error);
       } finally {
         setIsSaving(false);
       }
     },
-    [project?.id, selectedReport, mutate]
+    [project?.id, selectedReport, reportLayouts, mutate]
   );
 
   const handlePageSizeChange = (newSize: PageConfig["size"]) => {

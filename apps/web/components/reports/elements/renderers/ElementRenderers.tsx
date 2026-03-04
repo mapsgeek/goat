@@ -173,6 +173,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
       viewOnly={viewOnly}
       onWidgetUpdate={handleWidgetUpdate}
       fitMode="contain"
+      context="report"
     />
   );
 };

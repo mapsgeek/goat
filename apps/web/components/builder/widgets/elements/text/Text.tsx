@@ -1,25 +1,41 @@
 import { Box, Divider, Paper, Portal, Stack, styled } from "@mui/material";
 import { debounce } from "@mui/material/utils";
+import Color from "@tiptap/extension-color";
+import FontFamily from "@tiptap/extension-font-family";
 import Subscript from "@tiptap/extension-subscript";
 import Superscript from "@tiptap/extension-superscript";
 import TextAlign from "@tiptap/extension-text-align";
+import { TextStyle } from "@tiptap/extension-text-style";
 import type { Editor } from "@tiptap/react";
 import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ICON_NAME } from "@p4b/ui/components/Icon";
 
+import FontSize from "@/lib/extensions/font-size";
+import LineHeight from "@/lib/extensions/line-height";
 import type { TextElementSchema } from "@/lib/validations/widget";
 
 import { AlignSelect } from "@/components/builder/widgets/elements/text/AlignSelect";
 import { BlockTypeSelect } from "@/components/builder/widgets/elements/text/BlockTypeSelect";
+import FontFamilySelect from "@/components/builder/widgets/elements/text/FontFamilySelect";
+import FontSizeInput from "@/components/builder/widgets/elements/text/FontSizeInput";
+import LineHeightSelect from "@/components/builder/widgets/elements/text/LineHeightSelect";
 import MenuButton from "@/components/builder/widgets/elements/text/MenuButton";
+import TextColorPicker from "@/components/builder/widgets/elements/text/TextColorPicker";
+
+export type TextEditorContext = "dashboard" | "report";
 
 const extensions = [
   StarterKit,
   Subscript,
   Superscript,
+  TextStyle,
+  Color,
+  FontFamily,
+  FontSize,
+  LineHeight,
   TextAlign.configure({
     types: ["heading", "paragraph"],
   }),
@@ -96,9 +112,11 @@ const TextElementWidgetViewOnly = ({ config }: { config: TextElementSchema }) =>
 
 const TextElementWidgetEditable = ({
   config,
+  context,
   onWidgetUpdate,
 }: {
   config: TextElementSchema;
+  context?: TextEditorContext;
   onWidgetUpdate?: (newConfig: TextElementSchema) => void;
 }) => {
   const [isEditMode, setIsEditMode] = useState(false);
@@ -131,6 +149,19 @@ const TextElementWidgetEditable = ({
 
   const [toolbarOpen, setToolbarOpen] = useState(false);
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+  // Refs to avoid re-registering blur handler on every state change
+  const activeDropdownRef = useRef<string | null>(null);
+  const colorPickerOpenRef = useRef(false);
+  const toolbarClickedRef = useRef(false);
+
+  const updateActiveDropdown = useCallback((value: string | null) => {
+    setActiveDropdown(value);
+    activeDropdownRef.current = value;
+  }, []);
+
+  const updateColorPickerOpen = useCallback((value: boolean) => {
+    colorPickerOpenRef.current = value;
+  }, []);
 
   useEffect(() => {
     if (!editor) return;
@@ -139,6 +170,11 @@ const TextElementWidgetEditable = ({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const handleBlur = ({ event }: any) => {
       if (event?.relatedTarget && (event.relatedTarget as HTMLElement).closest(".tiptap-toolbar")) return;
+      if (event?.relatedTarget && (event.relatedTarget as HTMLElement).closest(".color-picker-popper")) return;
+      // Don't close if color picker or any toolbar dropdown is open
+      if (colorPickerOpenRef.current || activeDropdownRef.current) return;
+      // Don't close if toolbar was just clicked (mousedown fires before blur resolves)
+      if (toolbarClickedRef.current) return;
       setToolbarOpen(false);
       setIsEditMode(false);
     };
@@ -257,6 +293,11 @@ const TextElementWidgetEditable = ({
             className="tiptap-toolbar"
             onMouseDown={(e) => {
               e.stopPropagation();
+              // Mark toolbar as clicked so blur handler (which fires before click) keeps toolbar open
+              toolbarClickedRef.current = true;
+              setTimeout(() => {
+                toolbarClickedRef.current = false;
+              }, 200);
             }}
             onMouseUp={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
@@ -276,12 +317,30 @@ const TextElementWidgetEditable = ({
             <ToolbarContainer>
               {editor && (
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <BlockTypeSelect
-                    editor={editor}
-                    onOpen={() => setActiveDropdown("blockType")}
-                    onClose={() => setActiveDropdown(null)}
-                    forceClose={activeDropdown !== "blockType" && activeDropdown !== null}
-                  />
+                  {context === "report" ? (
+                    <>
+                      <FontSizeInput
+                        editor={editor}
+                        onOpen={() => updateActiveDropdown("fontSize")}
+                        onClose={() => updateActiveDropdown(null)}
+                        forceClose={activeDropdown !== "fontSize" && activeDropdown !== null}
+                      />
+                      <Divider flexItem orientation="vertical" />
+                      <FontFamilySelect
+                        editor={editor}
+                        onOpen={() => updateActiveDropdown("fontFamily")}
+                        onClose={() => updateActiveDropdown(null)}
+                        forceClose={activeDropdown !== "fontFamily" && activeDropdown !== null}
+                      />
+                    </>
+                  ) : (
+                    <BlockTypeSelect
+                      editor={editor}
+                      onOpen={() => updateActiveDropdown("blockType")}
+                      onClose={() => updateActiveDropdown(null)}
+                      forceClose={activeDropdown !== "blockType" && activeDropdown !== null}
+                    />
+                  )}
                   <Divider flexItem orientation="vertical" />
                   <Stack direction="row" spacing={0.5} alignItems="center">
                     <MenuButton
@@ -326,10 +385,27 @@ const TextElementWidgetEditable = ({
                   <Divider flexItem orientation="vertical" />
                   <AlignSelect
                     editor={editor}
-                    onOpen={() => setActiveDropdown("align")}
-                    onClose={() => setActiveDropdown(null)}
+                    onOpen={() => updateActiveDropdown("align")}
+                    onClose={() => updateActiveDropdown(null)}
                     forceClose={activeDropdown !== "align" && activeDropdown !== null}
                   />
+                  {context === "report" && (
+                    <LineHeightSelect
+                      editor={editor}
+                      onOpen={() => updateActiveDropdown("lineHeight")}
+                      onClose={() => updateActiveDropdown(null)}
+                      forceClose={activeDropdown !== "lineHeight" && activeDropdown !== null}
+                    />
+                  )}
+                  {context === "report" && (
+                    <>
+                      <Divider flexItem orientation="vertical" />
+                      <TextColorPicker
+                        editor={editor}
+                        onOpenChange={updateColorPickerOpen}
+                      />
+                    </>
+                  )}
                 </Stack>
               )}
             </ToolbarContainer>
@@ -358,16 +434,18 @@ const TextElementWidgetEditable = ({
 const TextElementWidget = ({
   config,
   viewOnly = false,
+  context,
   onWidgetUpdate,
 }: {
   config: TextElementSchema;
   viewOnly?: boolean;
+  context?: TextEditorContext;
   onWidgetUpdate?: (newConfig: TextElementSchema) => void;
 }) => {
   return viewOnly ? (
     <TextElementWidgetViewOnly config={config} />
   ) : (
-    <TextElementWidgetEditable config={config} onWidgetUpdate={onWidgetUpdate} />
+    <TextElementWidgetEditable config={config} context={context} onWidgetUpdate={onWidgetUpdate} />
   );
 };
 

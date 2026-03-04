@@ -6,6 +6,7 @@ import type { TabsContainerSchema, WidgetElementConfig } from "@/lib/validations
 import DividerElementWidget from "@/components/builder/widgets/elements/Divider";
 import ImageElementWidget from "@/components/builder/widgets/elements/Image";
 import TabsWidget from "@/components/builder/widgets/elements/Tabs";
+import type { TextEditorContext } from "@/components/builder/widgets/elements/text/Text";
 import TextElementWidget from "@/components/builder/widgets/elements/text/Text";
 
 interface WidgetElementProps {
@@ -14,6 +15,7 @@ interface WidgetElementProps {
   viewOnly?: boolean;
   onWidgetUpdate?: (newData: WidgetElementConfig) => void;
   fitMode?: "auto" | "contain";
+  context?: TextEditorContext;
   // For tabs widget
   projectLayers?: ProjectLayer[];
   projectLayerGroups?: ProjectLayerGroup[];
@@ -31,6 +33,7 @@ const WidgetElement: React.FC<WidgetElementProps> = ({
   onWidgetUpdate,
   viewOnly,
   fitMode,
+  context,
   projectLayers,
   projectLayerGroups,
   panelWidgets,
@@ -38,7 +41,7 @@ const WidgetElement: React.FC<WidgetElementProps> = ({
   return (
     <Box sx={{ width: "100%", height: fitMode === "contain" || config.type === "text" ? "100%" : undefined }}>
       {config.type === "text" && (
-        <TextElementWidget config={config} viewOnly={viewOnly} onWidgetUpdate={onWidgetUpdate} />
+        <TextElementWidget config={config} viewOnly={viewOnly} context={context} onWidgetUpdate={onWidgetUpdate} />
       )}
       {config.type === "divider" && <DividerElementWidget config={config} />}
       {config.type === "image" && (
