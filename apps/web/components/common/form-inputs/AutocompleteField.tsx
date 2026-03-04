@@ -79,8 +79,10 @@ export const RhfAutocompleteField = <
                   />
                 </Box>
               )}
-              renderOption={({ key, ...props }, option) => (
-                <li {...props} key={key}>
+              renderOption={(props, option) => {
+                const { key, ...rest } = props as React.HTMLAttributes<HTMLLIElement> & { key: React.Key };
+                return (
+                <li {...rest} key={key}>
                   {option.icon && (
                     <ListItemIcon
                       sx={{
@@ -91,7 +93,8 @@ export const RhfAutocompleteField = <
                   )}
                   <Typography variant="body1">{option.label}</Typography>
                 </li>
-              )}
+                );
+              }}
             />
           </>
         );
