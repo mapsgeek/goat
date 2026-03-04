@@ -50,7 +50,8 @@ export const loadImage = (
   };
 
   const rasterizeToCanvas = (img: HTMLImageElement, targetW: number, targetH: number) => {
-    const pixelRatio = window.devicePixelRatio || 1;
+    // Cap at 2 to prevent print contexts (DPI 300+ → devicePixelRatio 3.125+) from inflating icons
+    const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
     const canvas = document.createElement("canvas");
     canvas.width = targetW * pixelRatio;
     canvas.height = targetH * pixelRatio;
