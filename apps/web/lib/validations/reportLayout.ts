@@ -192,8 +192,6 @@ export const atlasFeatureCoverageSchema = z.object({
   sort_by: z.string().optional(),
   /** Sort order */
   sort_order: z.enum(["asc", "desc"]).default("asc"),
-  /** Optional CQL filter expression to filter features */
-  filter: z.string().nullable().optional(),
 });
 
 /**

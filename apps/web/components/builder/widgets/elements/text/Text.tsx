@@ -19,6 +19,7 @@ import type { TextElementSchema } from "@/lib/validations/widget";
 
 import { AlignSelect } from "@/components/builder/widgets/elements/text/AlignSelect";
 import { BlockTypeSelect } from "@/components/builder/widgets/elements/text/BlockTypeSelect";
+import DynamicTextMenu from "@/components/builder/widgets/elements/text/DynamicTextMenu";
 import FontFamilySelect from "@/components/builder/widgets/elements/text/FontFamilySelect";
 import FontSizeInput from "@/components/builder/widgets/elements/text/FontSizeInput";
 import LineHeightSelect from "@/components/builder/widgets/elements/text/LineHeightSelect";
@@ -114,10 +115,12 @@ const TextElementWidgetEditable = ({
   config,
   context,
   onWidgetUpdate,
+  featureAttributes,
 }: {
   config: TextElementSchema;
   context?: TextEditorContext;
   onWidgetUpdate?: (newConfig: TextElementSchema) => void;
+  featureAttributes?: string[];
 }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const mouseDownPos = useRef<{ x: number; y: number } | null>(null);
@@ -404,6 +407,14 @@ const TextElementWidgetEditable = ({
                         editor={editor}
                         onOpenChange={updateColorPickerOpen}
                       />
+                      <Divider flexItem orientation="vertical" />
+                      <DynamicTextMenu
+                        editor={editor}
+                        onOpen={() => updateActiveDropdown("dynamicText")}
+                        onClose={() => updateActiveDropdown(null)}
+                        forceClose={activeDropdown !== "dynamicText" && activeDropdown !== null}
+                        featureAttributes={featureAttributes}
+                      />
                     </>
                   )}
                 </Stack>
@@ -436,16 +447,23 @@ const TextElementWidget = ({
   viewOnly = false,
   context,
   onWidgetUpdate,
+  featureAttributes,
 }: {
   config: TextElementSchema;
   viewOnly?: boolean;
   context?: TextEditorContext;
   onWidgetUpdate?: (newConfig: TextElementSchema) => void;
+  featureAttributes?: string[];
 }) => {
   return viewOnly ? (
     <TextElementWidgetViewOnly config={config} />
   ) : (
-    <TextElementWidgetEditable config={config} context={context} onWidgetUpdate={onWidgetUpdate} />
+    <TextElementWidgetEditable
+      config={config}
+      context={context}
+      onWidgetUpdate={onWidgetUpdate}
+      featureAttributes={featureAttributes}
+    />
   );
 };
 

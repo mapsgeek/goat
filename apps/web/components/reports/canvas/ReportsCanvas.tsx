@@ -279,6 +279,7 @@ interface ReportElementRendererProps {
   isSnappingEnabled: boolean;
   activeSnapGuides: SnapGuide[];
   atlasPage?: AtlasPage | null;
+  featureAttributes?: string[];
   onSnapGuidesChange: (guides: SnapGuide[]) => void;
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
@@ -297,6 +298,7 @@ const ReportElementRenderer: React.FC<ReportElementRendererProps> = ({
   margins,
   isSnappingEnabled,
   atlasPage,
+  featureAttributes,
   onSnapGuidesChange,
   onSelect,
   onDelete,
@@ -743,6 +745,7 @@ const ReportElementRenderer: React.FC<ReportElementRendererProps> = ({
             basemapUrl={basemapUrl}
             projectLayers={projectLayers}
             atlasPage={atlasPage}
+            featureAttributes={featureAttributes}
             viewOnly={!isSelected}
             onElementUpdate={(elementId, config) => {
               // Update element config (e.g., map view state)
@@ -809,6 +812,12 @@ const ReportsCanvas: React.FC<ReportsCanvasProps> = ({
     projectLayers,
     currentPageIndex: atlasPageIndex,
   });
+
+  // Derive feature attribute names from first atlas page for dynamic text menu
+  const featureAttributes = useMemo(() => {
+    const props = currentAtlasPage?.feature?.properties;
+    return props ? Object.keys(props).sort() : [];
+  }, [currentAtlasPage]);
 
   // Effective page info (atlas or single page)
   const isAtlasEnabled = reportConfig?.atlas?.enabled && atlasTotalPages > 0;
@@ -1188,6 +1197,7 @@ const ReportsCanvas: React.FC<ReportsCanvasProps> = ({
                         isSnappingEnabled={isSnappingEnabled}
                         activeSnapGuides={activeSnapGuides}
                         atlasPage={currentAtlasPage}
+                        featureAttributes={featureAttributes}
                         onSnapGuidesChange={setActiveSnapGuides}
                         onSelect={(id) => onElementSelect?.(id)}
                         onDelete={(id) => onElementDelete?.(id)}
@@ -1331,8 +1341,23 @@ const ReportsCanvas: React.FC<ReportsCanvasProps> = ({
             )}
           </Stack>
 
-          {/* Spacer */}
-          <Box sx={{ flex: 1 }} />
+          {/* Page Label (center) */}
+          <Box sx={{ flex: 1, display: "flex", justifyContent: "center", minWidth: 0 }}>
+            {currentAtlasPage?.label && (
+              <Typography
+                variant="body1"
+                fontWeight={500}
+                sx={{
+                  maxWidth: 400,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  px: 2,
+                }}>
+                {currentAtlasPage.label}
+              </Typography>
+            )}
+          </Box>
 
           {/* Zoom Controls */}
           <Stack direction="row" spacing={0.5} alignItems="center">

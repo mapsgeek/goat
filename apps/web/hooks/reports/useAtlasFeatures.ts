@@ -7,7 +7,7 @@
 import { useMemo } from "react";
 
 import { useDatasetCollectionItems } from "@/lib/api/layers";
-import { generateFeaturePages } from "@/lib/print/atlas-utils";
+import { ATLAS_MAX_PAGES, generateFeaturePages } from "@/lib/print/atlas-utils";
 import type { AtlasPage, AtlasResult } from "@/lib/print/atlas-utils";
 import type { ProjectLayer } from "@/lib/validations/project";
 import type { AtlasConfig, AtlasFeatureCoverage } from "@/lib/validations/reportLayout";
@@ -36,26 +36,12 @@ export interface UseAtlasFeaturesResult {
   coverageLayer: ProjectLayer | null;
   /** Raw GeoJSON features from the coverage layer */
   features: GeoJSON.Feature[];
+  /** Whether features were truncated to the max page limit */
+  wasTruncated: boolean;
+  /** Total feature count before truncation */
+  totalFeatureCount: number;
 }
 
-/**
- * Combines two CQL filter objects with an AND operator.
- * Returns undefined if both filters are empty.
- */
-function combineCqlFilters(
-  layerCql?: object | null,
-  atlasCql?: object | null
-): object | undefined {
-  if (!layerCql && !atlasCql) return undefined;
-  if (!layerCql) return atlasCql as object;
-  if (!atlasCql) return layerCql as object;
-
-  // Combine with AND
-  return {
-    op: "and",
-    args: [layerCql, atlasCql],
-  };
-}
 
 /**
  * Hook for fetching atlas coverage layer features.
@@ -94,25 +80,18 @@ export function useAtlasFeatures({
     return projectLayers?.find((l) => l.id === featureCoverage.layer_project_id) ?? null;
   }, [atlasConfig, projectLayers]);
 
-  // Build query params with CQL filter
+  // Build query params — uses the layer's own CQL filter if set
   const queryParams = useMemo(() => {
     if (!coverageLayer || !atlasConfig?.enabled) {
       return undefined;
     }
 
-    // Get filters
     const layerCqlFilter = coverageLayer.query?.cql;
-    const atlasCqlFilter =
-      atlasConfig.coverage?.type === "feature" && atlasConfig.coverage.filter
-        ? JSON.parse(atlasConfig.coverage.filter)
-        : null;
-
-    const combinedFilter = combineCqlFilters(layerCqlFilter, atlasCqlFilter);
 
     return {
       limit: 10000, // Fetch all features for atlas
       offset: 0,
-      ...(combinedFilter ? { filter: JSON.stringify(combinedFilter) } : {}),
+      ...(layerCqlFilter ? { filter: JSON.stringify(layerCqlFilter) } : {}),
     };
   }, [coverageLayer, atlasConfig]);
 
@@ -147,7 +126,9 @@ export function useAtlasFeatures({
     const featureCoverage = atlasConfig.coverage as AtlasFeatureCoverage;
     const labelTemplate = atlasConfig.page_label?.template || "Page {page_number} of {total_pages}";
 
-    return generateFeaturePages(featureCoverage, features, labelTemplate);
+    // Enforce max page limit
+    const effectiveFeatures = features.slice(0, ATLAS_MAX_PAGES);
+    return generateFeaturePages(featureCoverage, effectiveFeatures, labelTemplate);
   }, [atlasConfig, features]);
 
   // Get current page
@@ -166,5 +147,7 @@ export function useAtlasFeatures({
     totalPages: atlasResult?.totalPages ?? 0,
     coverageLayer,
     features,
+    wasTruncated: features.length > ATLAS_MAX_PAGES,
+    totalFeatureCount: features.length,
   };
 }

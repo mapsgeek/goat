@@ -3,7 +3,7 @@ import React from "react";
 
 import { Icon } from "@p4b/ui/components/Icon";
 
-import type { AtlasPage } from "@/lib/print/atlas-utils";
+import { type AtlasPage, resolveAtlasText } from "@/lib/print/atlas-utils";
 import { mmToPx } from "@/lib/print/units";
 import type { ProjectLayer } from "@/lib/validations/project";
 import type { ReportElement, ReportElementType } from "@/lib/validations/reportLayout";
@@ -39,6 +39,7 @@ interface ElementRendererProps {
   element: ReportElement;
   viewOnly?: boolean;
   onElementUpdate?: (elementId: string, config: Record<string, unknown>) => void;
+  featureAttributes?: string[];
 }
 
 interface ElementContentRendererProps {
@@ -50,6 +51,7 @@ interface ElementContentRendererProps {
   projectLayers?: ProjectLayer[];
   allElements?: ReportElement[];
   atlasPage?: AtlasPage | null;
+  featureAttributes?: string[];
   viewOnly?: boolean;
   onElementUpdate?: (elementId: string, config: Record<string, unknown>) => void;
   onNavigationModeChange?: (isNavigating: boolean) => void;
@@ -154,6 +156,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
   element,
   viewOnly = true,
   onElementUpdate,
+  featureAttributes,
 }) => {
   if (!isElementElementType(element.type)) {
     return null;
@@ -174,6 +177,7 @@ export const ElementRenderer: React.FC<ElementRendererProps> = ({
       onWidgetUpdate={handleWidgetUpdate}
       fitMode="contain"
       context="report"
+      featureAttributes={featureAttributes}
     />
   );
 };
@@ -208,6 +212,7 @@ export const ElementContentRenderer: React.FC<ElementContentRendererProps> = ({
   projectLayers,
   allElements,
   atlasPage,
+  featureAttributes,
   viewOnly = true,
   onElementUpdate,
   onNavigationModeChange,
@@ -215,6 +220,23 @@ export const ElementContentRenderer: React.FC<ElementContentRendererProps> = ({
 }) => {
   // For chart and element types, use the widget renderers
   if (isChartElementType(element.type) || isElementElementType(element.type)) {
+    // Apply atlas dynamic text substitution for text elements in viewOnly (print) mode
+    let renderElement = element;
+    if (element.type === "text" && atlasPage && viewOnly) {
+      const originalText =
+        element.config.setup?.text ?? element.config.text ?? element.config.content ?? "";
+      const resolvedText = resolveAtlasText(originalText as string, atlasPage);
+      if (resolvedText !== originalText) {
+        renderElement = {
+          ...element,
+          config: {
+            ...element.config,
+            setup: { ...element.config.setup, text: resolvedText },
+          },
+        };
+      }
+    }
+
     return (
       <Box
         sx={{
@@ -225,7 +247,12 @@ export const ElementContentRenderer: React.FC<ElementContentRendererProps> = ({
           transform: `scale(${zoom})`,
           transformOrigin: "top left",
         }}>
-        <ReportElementRenderer element={element} viewOnly={viewOnly} onElementUpdate={onElementUpdate} />
+        <ReportElementRenderer
+          element={renderElement}
+          viewOnly={viewOnly}
+          onElementUpdate={onElementUpdate}
+          featureAttributes={featureAttributes}
+        />
       </Box>
     );
   }

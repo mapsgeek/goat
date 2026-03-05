@@ -16,6 +16,8 @@ interface WidgetElementProps {
   onWidgetUpdate?: (newData: WidgetElementConfig) => void;
   fitMode?: "auto" | "contain";
   context?: TextEditorContext;
+  /** Available feature attribute names for dynamic text insertion */
+  featureAttributes?: string[];
   // For tabs widget
   projectLayers?: ProjectLayer[];
   projectLayerGroups?: ProjectLayerGroup[];
@@ -34,6 +36,7 @@ const WidgetElement: React.FC<WidgetElementProps> = ({
   viewOnly,
   fitMode,
   context,
+  featureAttributes,
   projectLayers,
   projectLayerGroups,
   panelWidgets,
@@ -41,7 +44,13 @@ const WidgetElement: React.FC<WidgetElementProps> = ({
   return (
     <Box sx={{ width: "100%", height: fitMode === "contain" || config.type === "text" ? "100%" : undefined }}>
       {config.type === "text" && (
-        <TextElementWidget config={config} viewOnly={viewOnly} context={context} onWidgetUpdate={onWidgetUpdate} />
+        <TextElementWidget
+          config={config}
+          viewOnly={viewOnly}
+          context={context}
+          onWidgetUpdate={onWidgetUpdate}
+          featureAttributes={featureAttributes}
+        />
       )}
       {config.type === "divider" && <DividerElementWidget config={config} />}
       {config.type === "image" && (

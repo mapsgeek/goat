@@ -317,7 +317,9 @@ export function calculateMapViewport(
 
 /**
  * Resolve a label template with values.
- * Supports: {page_number}, {total_pages}, {feature.ATTR_NAME}
+ * Supports both syntaxes:
+ *   - Internal:  {page_number}, {total_pages}, {feature.ATTR_NAME}
+ *   - Dynamic text: {{@page_number}}, {{@total_pages}}, {{@feature.ATTR_NAME}}
  */
 export function resolvePageLabel(
   template: string,
@@ -329,12 +331,18 @@ export function resolvePageLabel(
 ): string {
   let result = template;
 
-  // Replace simple placeholders
+  // Replace simple placeholders (both syntaxes)
+  result = result.replace(/\{\{@page_number\}\}/g, String(values.page_number));
   result = result.replace(/{page_number}/g, String(values.page_number));
+  result = result.replace(/\{\{@total_pages\}\}/g, String(values.total_pages));
   result = result.replace(/{total_pages}/g, String(values.total_pages));
 
-  // Replace feature attribute placeholders
+  // Replace feature attribute placeholders (both syntaxes)
   if (values.feature) {
+    result = result.replace(/\{\{@feature\.([^}]+)\}\}/g, (_, attr) => {
+      const value = values.feature?.[attr];
+      return value !== undefined && value !== null ? String(value) : "";
+    });
     result = result.replace(/{feature\.([^}]+)}/g, (_, attr) => {
       const value = values.feature?.[attr];
       return value !== undefined && value !== null ? String(value) : "";
@@ -342,6 +350,41 @@ export function resolvePageLabel(
   }
 
   return result;
+}
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+/** Maximum number of atlas pages allowed */
+export const ATLAS_MAX_PAGES = 150;
+
+// =============================================================================
+// Dynamic Text Resolution
+// =============================================================================
+
+/**
+ * Resolve dynamic text placeholders in HTML content using atlas page data.
+ * Supports: {{@page_number}}, {{@total_pages}}, {{@feature.ATTR_NAME}}
+ */
+export function resolveAtlasText(
+  htmlContent: string,
+  atlasPage: AtlasPage | null
+): string {
+  if (!atlasPage || !htmlContent) return htmlContent;
+
+  return htmlContent.replace(
+    /\{\{@(page_number|total_pages|feature\.([^}]+))\}\}/g,
+    (match, key, attrName) => {
+      if (key === "page_number") return String(atlasPage.pageNumber);
+      if (key === "total_pages") return String(atlasPage.totalPages);
+      if (attrName && atlasPage.feature?.properties) {
+        const value = atlasPage.feature.properties[attrName];
+        return value !== undefined && value !== null ? String(value) : "";
+      }
+      return match;
+    }
+  );
 }
 
 // =============================================================================

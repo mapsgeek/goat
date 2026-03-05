@@ -2,6 +2,7 @@
 
 import { Add as AddIcon, Description as ReportIcon } from "@mui/icons-material";
 import {
+  Alert,
   Box,
   Button,
   CircularProgress,
@@ -31,13 +32,18 @@ import {
   updateReportLayout,
   useReportLayouts,
 } from "@/lib/api/reportLayouts";
+import { useLayerQueryables } from "@/lib/api/layers";
 import { useProjectInitialViewState } from "@/lib/api/projects";
+import { ATLAS_MAX_PAGES } from "@/lib/print/atlas-utils";
 import { PAGE_SIZES, type PageSize } from "@/lib/print/units";
 import type { Project, ProjectLayer } from "@/lib/validations/project";
-import type { PageConfig, ReportLayout, ReportLayoutConfig } from "@/lib/validations/reportLayout";
-
-// AtlasConfig and AtlasFeatureCoverage types - needed when Atlas UI is re-enabled
-// import type { AtlasConfig, AtlasFeatureCoverage } from "@/lib/validations/reportLayout";
+import type {
+  AtlasConfig,
+  AtlasFeatureCoverage,
+  PageConfig,
+  ReportLayout,
+  ReportLayoutConfig,
+} from "@/lib/validations/reportLayout";
 import type { SelectorItem } from "@/types/map/common";
 
 import { useAtlasFeatures } from "@/hooks/reports/useAtlasFeatures";
@@ -106,13 +112,13 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
   const [dpi, setDpi] = useState<number>(300);
   const [exportFormat, setExportFormat] = useState<string>("pdf");
 
-  // Atlas settings state - commented out, feature not yet ready
-  // TODO: Uncomment when Atlas UI is re-enabled
-  // const [atlasEnabled, setAtlasEnabled] = useState<boolean>(false);
-  // const [atlasLayerId, setAtlasLayerId] = useState<number | null>(null);
-  // const [atlasSortBy, setAtlasSortBy] = useState<string>("");
-  // const [atlasSortOrder, setAtlasSortOrder] = useState<"asc" | "desc">("asc");
-  // const [atlasFilter, setAtlasFilter] = useState<string>("");
+  // Atlas settings state
+  const [atlasEnabled, setAtlasEnabled] = useState<boolean>(false);
+  const [atlasSettingsCollapsed, setAtlasSettingsCollapsed] = useState(false);
+  const [atlasLayerId, setAtlasLayerId] = useState<number | null>(null);
+  const [atlasPageName, setAtlasPageName] = useState<string>("");
+  const [atlasSortBy, setAtlasSortBy] = useState<string>("");
+  const [atlasSortOrder, setAtlasSortOrder] = useState<"asc" | "desc">("asc");
 
   // Modal states
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -163,15 +169,39 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
     []
   );
 
-  // Coverage layer items - kept for later use when Atlas UI is re-enabled
-  // const coverageLayerItems: SelectorItem[] = useMemo(
-  //   () =>
-  //     projectLayers.map((layer) => ({
-  //       label: layer.name,
-  //       value: layer.id,
-  //     })),
-  //   [projectLayers]
-  // );
+  // Coverage layer items for atlas
+  const coverageLayerItems: SelectorItem[] = useMemo(
+    () =>
+      projectLayers.map((layer) => ({
+        label: layer.name,
+        value: layer.id,
+      })),
+    [projectLayers]
+  );
+
+  // Fetch layer attributes for the selected coverage layer
+  const coverageLayerObj = useMemo(
+    () => projectLayers.find((l) => l.id === atlasLayerId) ?? null,
+    [atlasLayerId, projectLayers]
+  );
+  const { queryables } = useLayerQueryables(coverageLayerObj?.layer_id ?? "");
+
+  // Attribute items for Page Name and Sort By selectors
+  const attributeItems: SelectorItem[] = useMemo(() => {
+    if (!queryables?.properties) return [];
+    return Object.values(queryables.properties).map((field) => ({
+      label: field.name,
+      value: field.name,
+    }));
+  }, [queryables]);
+
+  const sortOrderItems: SelectorItem[] = useMemo(
+    () => [
+      { label: t("ascending"), value: "asc" },
+      { label: t("descending"), value: "desc" },
+    ],
+    [t]
+  );
 
   // Update local state and notify parent when selected report changes
   useEffect(() => {
@@ -184,20 +214,27 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
         setOrientation(report.config.page.orientation);
         setSnapToGuides(report.config.page.snapToGuides ?? false);
         setShowRulers(report.config.page.showRulers ?? false);
-        // Atlas settings loading - commented out until Atlas UI is ready
-        // const atlas = report.config.atlas;
-        // setAtlasEnabled(atlas?.enabled ?? false);
-        // if (atlas?.coverage?.type === "feature") {
-        //   setAtlasLayerId(atlas.coverage.layer_project_id);
-        //   setAtlasSortBy(atlas.coverage.sort_by ?? "");
-        //   setAtlasSortOrder(atlas.coverage.sort_order ?? "asc");
-        //   setAtlasFilter(atlas.coverage.filter ?? "");
-        // } else {
-        //   setAtlasLayerId(null);
-        //   setAtlasSortBy("");
-        //   setAtlasSortOrder("asc");
-        //   setAtlasFilter("");
-        // }
+        // Atlas settings loading
+        const atlas = report.config.atlas;
+        setAtlasEnabled(atlas?.enabled ?? false);
+        if (atlas?.coverage?.type === "feature") {
+          setAtlasLayerId(atlas.coverage.layer_project_id);
+          setAtlasSortBy(atlas.coverage.sort_by ?? "");
+          setAtlasSortOrder(atlas.coverage.sort_order ?? "asc");
+        } else {
+          setAtlasLayerId(null);
+          setAtlasSortBy("");
+          setAtlasSortOrder("asc");
+        }
+        // Page label
+        const pageLabel = atlas?.page_label;
+        if (pageLabel?.template) {
+          // Extract attribute name from template like "{{@feature.NAME}}"
+          const match = pageLabel.template.match(/\{\{@feature\.([^}]+)\}\}/);
+          setAtlasPageName(match ? match[1] : "");
+        } else {
+          setAtlasPageName("");
+        }
       }
     } else {
       onSelectReport(null);
@@ -364,53 +401,93 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
     handleSettingChange({ showRulers: enabled });
   };
 
-  // Atlas settings save - commented out until Atlas feature is ready
-  // const handleAtlasSettingChange = useCallback(
-  //   async (updates: Partial<AtlasConfig>) => {
-  //     if (!project?.id || !selectedReport) return;
+  // Atlas settings save
+  const handleAtlasSettingChange = useCallback(
+    async (updates: Partial<AtlasConfig>) => {
+      if (!project?.id || !selectedReport) return;
 
-  //     setIsSaving(true);
-  //     try {
-  //       const currentAtlas = selectedReport.config.atlas || { enabled: false };
-  //       const updatedConfig: ReportLayoutConfig = {
-  //         ...selectedReport.config,
-  //         atlas: {
-  //           ...currentAtlas,
-  //           ...updates,
-  //         },
-  //       };
-  //       await updateReportLayout(project.id, selectedReport.id, {
-  //         config: updatedConfig,
-  //       });
-  //       await mutate();
-  //     } catch (error) {
-  //       console.error("Failed to update atlas settings:", error);
-  //     } finally {
-  //       setIsSaving(false);
-  //     }
-  //   },
-  //   [project?.id, selectedReport, mutate]
-  // );
+      setIsSaving(true);
+      try {
+        const currentAtlas = selectedReport.config.atlas || { enabled: false };
+        const updatedConfig: ReportLayoutConfig = {
+          ...selectedReport.config,
+          atlas: {
+            ...currentAtlas,
+            ...updates,
+          },
+        };
+        await updateReportLayout(project.id, selectedReport.id, {
+          config: updatedConfig,
+        });
+        // Optimistic cache update to avoid re-fetch replacing parent's local state
+        mutate(
+          reportLayouts?.map((r) =>
+            r.id === selectedReport.id ? { ...r, config: updatedConfig } : r
+          ),
+          { revalidate: false }
+        );
+      } catch (error) {
+        console.error("Failed to update atlas settings:", error);
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [project?.id, selectedReport, reportLayouts, mutate]
+  );
 
-  // Atlas UI handlers - commented out until Atlas feature is ready
-  // const handleAtlasEnabledChange = (enabled: boolean) => {
-  //   setAtlasEnabled(enabled);
-  //   handleAtlasSettingChange({ enabled });
-  // };
+  const handleAtlasEnabledChange = (enabled: boolean) => {
+    setAtlasEnabled(enabled);
+    handleAtlasSettingChange({ enabled });
+  };
 
-  // const handleAtlasLayerChange = (layerId: number | null) => {
-  //   setAtlasLayerId(layerId);
-  //   if (layerId) {
-  //     const coverage: AtlasFeatureCoverage = {
-  //       type: "feature",
-  //       layer_project_id: layerId,
-  //       sort_by: atlasSortBy || undefined,
-  //       sort_order: atlasSortOrder,
-  //       filter: atlasFilter || null,
-  //     };
-  //     handleAtlasSettingChange({ coverage });
-  //   }
-  // };
+  const handleAtlasLayerChange = (layerId: number | null) => {
+    setAtlasLayerId(layerId);
+    // Reset dependent fields
+    setAtlasSortBy("");
+    setAtlasPageName("");
+    if (layerId) {
+      const coverage: AtlasFeatureCoverage = {
+        type: "feature",
+        layer_project_id: layerId,
+        sort_by: undefined,
+        sort_order: atlasSortOrder,
+      };
+      handleAtlasSettingChange({ coverage, page_label: { enabled: false, template: "" } });
+    }
+  };
+
+  const handleAtlasSortByChange = (sortBy: string) => {
+    setAtlasSortBy(sortBy);
+    if (!atlasLayerId) return;
+    const coverage: AtlasFeatureCoverage = {
+      type: "feature",
+      layer_project_id: atlasLayerId,
+      sort_by: sortBy || undefined,
+      sort_order: atlasSortOrder,
+    };
+    handleAtlasSettingChange({ coverage });
+  };
+
+  const handleAtlasSortOrderChange = (order: "asc" | "desc") => {
+    setAtlasSortOrder(order);
+    if (!atlasLayerId) return;
+    const coverage: AtlasFeatureCoverage = {
+      type: "feature",
+      layer_project_id: atlasLayerId,
+      sort_by: atlasSortBy || undefined,
+      sort_order: order,
+    };
+    handleAtlasSettingChange({ coverage });
+  };
+
+  const handleAtlasPageNameChange = (attrName: string) => {
+    setAtlasPageName(attrName);
+    const template = attrName ? `{{@feature.${attrName}}}` : "";
+    handleAtlasSettingChange({
+      page_label: { enabled: !!attrName, template },
+    });
+  };
+
 
   // Menu items for layout actions
   const getLayoutMenuItems = useCallback(
@@ -449,11 +526,12 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
   // Print hook (server-side PDF generation via Playwright)
   const { isBusy: isPrinting, exportReport } = useExportReport();
 
-  // Get atlas info for print job (total pages needed by backend)
-  const { totalPages: atlasTotalPages } = useAtlasFeatures({
-    atlasConfig: selectedReport?.config?.atlas,
-    projectLayers,
-  });
+  // Get atlas info for print job and UI display
+  const { totalPages: atlasTotalPages, wasTruncated: atlasWasTruncated, totalFeatureCount: atlasTotalFeatureCount } =
+    useAtlasFeatures({
+      atlasConfig: selectedReport?.config?.atlas,
+      projectLayers,
+    });
 
   const handlePrintReport = useCallback(async () => {
     if (!project?.id || !selectedReport) return;
@@ -704,8 +782,7 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
               />
             </Box>
 
-            {/* Atlas/Map Series Section - Hidden for now, feature not yet complete */}
-            {/* TODO: Uncomment when Atlas feature is ready
+            {/* Atlas / Map Series Section */}
             <Box sx={{ overflow: "hidden" }}>
               <SectionHeader
                 active={atlasEnabled}
@@ -720,6 +797,7 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
                 active={atlasEnabled && !atlasSettingsCollapsed}
                 baseOptions={
                   <Stack spacing={3}>
+                    {/* Coverage Layer */}
                     <Selector
                       label={t("coverage_layer")}
                       selectedItems={coverageLayerItems.find((item) => item.value === atlasLayerId)}
@@ -734,11 +812,82 @@ const ReportsConfigPanel: React.FC<ReportsConfigPanelProps> = ({
                       placeholder={t("select_layer")}
                       disabled={!selectedReport || isSaving}
                     />
+
+                    {/* Controls only shown when a coverage layer is selected */}
+                    {atlasLayerId && (
+                      <>
+                        {/* Page Name (attribute-based label) */}
+                        <Selector
+                          label={t("page_name")}
+                          selectedItems={attributeItems.find((item) => item.value === atlasPageName)}
+                          setSelectedItems={(item: SelectorItem | SelectorItem[] | undefined) => {
+                            if (item && !Array.isArray(item)) {
+                              handleAtlasPageNameChange(item.value as string);
+                            } else {
+                              handleAtlasPageNameChange("");
+                            }
+                          }}
+                          items={attributeItems}
+                          placeholder={t("select_attribute")}
+                          disabled={!selectedReport || isSaving}
+                        />
+
+                        {/* Sort By */}
+                        <Selector
+                          label={t("sort_by")}
+                          selectedItems={attributeItems.find((item) => item.value === atlasSortBy)}
+                          setSelectedItems={(item: SelectorItem | SelectorItem[] | undefined) => {
+                            if (item && !Array.isArray(item)) {
+                              handleAtlasSortByChange(item.value as string);
+                            } else {
+                              handleAtlasSortByChange("");
+                            }
+                          }}
+                          items={attributeItems}
+                          placeholder={t("select_attribute")}
+                          disabled={!selectedReport || isSaving}
+                        />
+
+                        {/* Sort Order */}
+                        <Selector
+                          label={t("sort_order")}
+                          selectedItems={sortOrderItems.find((item) => item.value === atlasSortOrder)}
+                          setSelectedItems={(item: SelectorItem | SelectorItem[] | undefined) => {
+                            if (item && !Array.isArray(item)) {
+                              handleAtlasSortOrderChange(item.value as "asc" | "desc");
+                            }
+                          }}
+                          items={sortOrderItems}
+                          disabled={!selectedReport || isSaving}
+                        />
+
+                      </>
+                    )}
+
+                    {/* Page count info */}
+                    {atlasEnabled && atlasTotalPages > 0 && (
+                      <Typography variant="body2" color="text.secondary">
+                        {t("atlas_pages_count", { count: atlasTotalPages })}
+                      </Typography>
+                    )}
+
+                    {/* Truncation warning + filter hint */}
+                    {atlasWasTruncated && (
+                      <Alert severity="warning" sx={{ py: 0, "& .MuiAlert-message": { py: 0.5 } }}>
+                        <Typography variant="caption">
+                          {t("atlas_page_limit_warning", {
+                            max: ATLAS_MAX_PAGES,
+                            count: atlasTotalFeatureCount,
+                          })}
+                          {" "}
+                          {t("atlas_filter_hint")}
+                        </Typography>
+                      </Alert>
+                    )}
                   </Stack>
                 }
               />
             </Box>
-            */}
           </Stack>
         </Box>
       </Box>
