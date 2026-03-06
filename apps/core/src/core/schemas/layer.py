@@ -224,7 +224,7 @@ class FeatureReadBaseAttributes(
     attribute_mapping: Dict[str, Any] | None = Field(
         default=None, description="Attribute mapping of the layer"
     )
-    size: int = Field(..., description="Size of the layer in bytes")
+    size: int | None = Field(None, description="Size of the layer in bytes")
     properties: Dict[str, Any] = Field(
         default_factory=dict, description="Layer properties."
     )
