@@ -188,7 +188,8 @@ export const LayerLegendPanel = ({ properties, geometryType, itemTypographySx }:
       );
     }
 
-    // Otherwise, show fill color with static stroke (if enabled)
+    // Otherwise, show fill color with stroke (classified if same field, static otherwise)
+    const sameFieldStroke = strokeMap.length > 1;
     return (
       <Box sx={{ pb: 1, pr: 2, pt: 0.5 }}>
         <Typography variant="caption" color="text.secondary" sx={{ display: "block", mb: 0.5 }}>
@@ -201,7 +202,7 @@ export const LayerLegendPanel = ({ properties, geometryType, itemTypographySx }:
               <LayerIcon
                 type={geometryType}
                 color={item.color}
-                strokeColor={stroked ? strokeColor : undefined}
+                strokeColor={stroked ? (sameFieldStroke ? strokeMap[index]?.color : strokeColor) : undefined}
                 filled={filled}
               />
             )}
