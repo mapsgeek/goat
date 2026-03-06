@@ -23,7 +23,9 @@ export const selectFilteredProjectLayers = createSelector(
       (layer) => !excludeLayerTypes.includes(layer.type) && !excludeLayerIds.includes(layer.layer_id)
     );
 
-    // Then filter out layers that belong to invisible groups
+    // Then filter out layers that belong to invisible groups and apply
+    // tree-aware DFS traversal so the rendering order matches the visual
+    // layer panel hierarchy (layers inside a group inherit the group's position).
     if (projectLayerGroups && projectLayerGroups.length > 0) {
       // Create a set of invisible group IDs (including nested invisible groups)
       const invisibleGroupIds = new Set<number>();
@@ -56,6 +58,48 @@ export const selectFilteredProjectLayers = createSelector(
         }
         return !invisibleGroupIds.has(layer.layer_project_group_id);
       });
+
+      // DFS traversal to order layers by group hierarchy
+      type TreeNode = {
+        type: "group" | "layer";
+        id: number;
+        order: number;
+        layer?: (typeof filteredLayers)[number];
+      };
+      const childrenByParent = new Map<number | null, TreeNode[]>();
+
+      for (const group of projectLayerGroups) {
+        if (invisibleGroupIds.has(group.id)) continue;
+        const parentKey = group.parent_id ?? null;
+        if (!childrenByParent.has(parentKey)) childrenByParent.set(parentKey, []);
+        childrenByParent.get(parentKey)!.push({ type: "group", id: group.id, order: group.order ?? 0 });
+      }
+
+      for (const layer of filteredLayers) {
+        const parentKey = layer.layer_project_group_id ?? null;
+        if (!childrenByParent.has(parentKey)) childrenByParent.set(parentKey, []);
+        childrenByParent.get(parentKey)!.push({ type: "layer", id: layer.id, order: layer.order ?? 0, layer });
+      }
+
+      for (const children of childrenByParent.values()) {
+        children.sort((a, b) => a.order - b.order);
+      }
+
+      const orderedLayers: (typeof filteredLayers)[number][] = [];
+      const collectLayers = (parentId: number | null) => {
+        const children = childrenByParent.get(parentId);
+        if (!children) return;
+        for (const child of children) {
+          if (child.type === "layer" && child.layer) {
+            orderedLayers.push(child.layer);
+          } else if (child.type === "group") {
+            collectLayers(child.id);
+          }
+        }
+      };
+      collectLayers(null);
+
+      return orderedLayers;
     }
 
     return filteredLayers.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
