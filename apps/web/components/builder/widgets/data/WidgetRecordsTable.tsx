@@ -97,8 +97,12 @@ const Row = ({ row, fields, formatCellValueForColumn }: { row: RecordFeatureRow;
                           {field.name}
                         </Typography>
                       </Stack>
-                      {jsonDataRows ? (
-                        <Table size="small" aria-label="purchases" key={field.name}>
+                      {isJsonDataArrayOfObjects ? (
+                        <Table
+                          size="small"
+                          aria-label={field?.name ? `${field.name} object field values` : "expanded object field values"}
+                          key={field.name}
+                        >
                           <TableHead>
                             <TableRow>
                               {Object.keys(jsonDataRows[0]).map((key) => (
